@@ -1,0 +1,19 @@
+engine:
+  name: portfolio_engine
+  version: 0.0
+
+strategy:
+  name: beta_engine_60_40
+  weights:
+    SPY: 0.60
+    TLT: 0.40
+
+overlays:
+  risk: risk_overlay_none
+  regime: regime_overlay_none
+
+rebalancer:
+  type: monthly
+
+constraints:
+  leverage: false

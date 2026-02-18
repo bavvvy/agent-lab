@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Backtest outputs
+outputs/*.png
+outputs/*.csv
+outputs/*.json
+outputs/*.html
+
+# OS junk
+.DS_Store
+Thumbs.db
+
