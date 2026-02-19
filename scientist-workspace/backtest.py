@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import base64
+import html
 import io
+import json
 import math
+import subprocess
 from datetime import date
 from pathlib import Path
 import sys
@@ -13,6 +17,7 @@ if _venv_site.exists():
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import yaml
 
 from portfolio_engine.engine import PortfolioEngine
 
@@ -45,95 +50,149 @@ def fig_to_base64(fig) -> str:
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
-def run_backtest() -> None:
-    output_dir = Path("outputs")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for p in output_dir.iterdir():
-        if p.is_file():
-            p.unlink()
+def git_cmd(args: list[str]) -> str:
+    return subprocess.check_output(args, text=True).strip()
 
+
+def run_backtest(publish: bool = False) -> None:
+    with open("config.yaml", "r", encoding="utf-8") as f:
+        raw_config = yaml.safe_load(f)
     engine = PortfolioEngine.from_yaml("config.yaml")
+
+    strategy_name = str(
+        raw_config.get("strategy", {}).get("name")
+        or getattr(engine.config.allocation_model, "type", "strategy")
+    )
+    strategy_slug = strategy_name.replace("_", "-").lower()
+
     dates = month_ends(2024, 1, 24)
+    start_date, end_date = dates[0], dates[-1]
+    initial_capital = 10000.0
+    transaction_cost_bps = 0
+    slippage_bps = 0
+    rebalance_rule = "monthly month-change via engine rebalancer"
+
     prices = pd.DataFrame(
         {
-            "date": dates,
+            "date": pd.to_datetime(dates),
             "SPY": [float(480 + i * 3 + (i % 4) * 2) for i in range(len(dates))],
             "TLT": [float(95 + (i % 6) - i * 0.2) for i in range(len(dates))],
         }
     )
 
-    cash, positions, last_reb = 10000.0, {"SPY": 0.0, "TLT": 0.0}, None
-    equity = []
+    cash, positions, last_reb = initial_capital, {"SPY": 0.0, "TLT": 0.0}, None
+    equity, weight_rows, turnover_rows = [], [], []
+
     for _, r in prices.iterrows():
-        dt = r["date"]
+        dt = r["date"].date()
         px = {"SPY": float(r["SPY"]), "TLT": float(r["TLT"])}
         pv = cash + sum(positions[s] * px[s] for s in positions)
         out = engine.run(dt, px, pv, positions, last_reb)
+        weight_rows.append({"date": dt.isoformat(), **out["weights"]})
         if out["should_rebalance"]:
+            turnover_notional = sum(abs(du) * px[s] for s, du in out["trades"].items())
+            turnover_rows.append(turnover_notional / pv if pv > 0 else 0.0)
             for s, du in out["trades"].items():
                 cash -= du * px[s]
                 positions[s] = positions.get(s, 0.0) + du
             last_reb = dt
         equity.append(cash + sum(positions[s] * px[s] for s in positions))
 
-    df = pd.DataFrame({"date": pd.to_datetime(dates), "equity": equity})
+    df = pd.DataFrame({"date": prices["date"], "equity": equity})
     df["ret"] = df["equity"].pct_change().fillna(0.0)
     monthly = df.iloc[1:].copy()
+
     years = len(monthly) / 12
-    cagr = float((df["equity"].iloc[-1] / df["equity"].iloc[0]) ** (1 / years) - 1) if years > 0 else 0.0
+    total_return = float(df["equity"].iloc[-1] / df["equity"].iloc[0] - 1)
+    cagr = float((1 + total_return) ** (1 / years) - 1) if years > 0 else 0.0
     vol = ann_std(monthly["ret"])
     sharpe = float((monthly["ret"].mean() * 12) / vol) if vol > 0 else 0.0
     mdd = max_drawdown(df["equity"])
     best_idx = monthly["ret"].idxmax()
     worst_idx = monthly["ret"].idxmin()
+    best_month = monthly.loc[best_idx, "date"].date().isoformat()
+    worst_month = monthly.loc[worst_idx, "date"].date().isoformat()
     pct_pos = float((monthly["ret"] > 0).mean()) if len(monthly) else 0.0
-    annual_returns = monthly.assign(year=monthly["date"].dt.year).groupby("year")["ret"].apply(lambda x: (1 + x).prod() - 1)
+    turnover = float(sum(turnover_rows)) if turnover_rows else 0.0
 
-    fig1 = plt.figure(figsize=(9, 4)); plt.plot(df["date"], df["equity"], lw=2); plt.title("Equity Curve"); plt.grid(alpha=0.3)
+    annual_returns = (
+        monthly.assign(year=monthly["date"].dt.year)
+        .groupby("year")["ret"]
+        .apply(lambda x: (1 + x).prod() - 1)
+    )
+    weights_df = pd.DataFrame(weight_rows)
+
+    fig1 = plt.figure(figsize=(9, 4))
+    plt.plot(df["date"], df["equity"], lw=2)
+    plt.title("Equity Curve")
+    plt.grid(alpha=0.3)
     equity_b64 = fig_to_base64(fig1)
+
     dd = df["equity"] / df["equity"].cummax() - 1.0
-    fig2 = plt.figure(figsize=(9, 3.5)); plt.plot(df["date"], dd, color="crimson", lw=2); plt.title("Drawdown"); plt.grid(alpha=0.3)
+    fig2 = plt.figure(figsize=(9, 3.5))
+    plt.plot(df["date"], dd, color="crimson", lw=2)
+    plt.title("Drawdown")
+    plt.grid(alpha=0.3)
     dd_b64 = fig_to_base64(fig2)
 
     metrics = pd.DataFrame(
         [
+            ["Total return", f"{total_return:.2%}"],
             ["CAGR", f"{cagr:.2%}"],
-            ["Vol", f"{vol:.2%}"],
+            ["Volatility", f"{vol:.2%}"],
             ["Sharpe (rf=0)", f"{sharpe:.3f}"],
             ["Max drawdown", f"{mdd:.2%}"],
-            ["Best month", f"{monthly.loc[best_idx, 'date'].date()} ({monthly.loc[best_idx, 'ret']:.2%})"],
-            ["Worst month", f"{monthly.loc[worst_idx, 'date'].date()} ({monthly.loc[worst_idx, 'ret']:.2%})"],
+            ["Best month", f"{best_month} ({monthly.loc[best_idx, 'ret']:.2%})"],
+            ["Worst month", f"{worst_month} ({monthly.loc[worst_idx, 'ret']:.2%})"],
             ["% positive months", f"{pct_pos:.2%}"],
+            ["Turnover", f"{turnover:.2%}"],
         ],
         columns=["Metric", "Value"],
     )
 
-    html = f"""
-<html><head><meta charset='utf-8'><title>Backtest Report</title>
-<style>body{{font-family:Arial,sans-serif;max-width:1000px;margin:24px auto;line-height:1.35}}table{{border-collapse:collapse;width:100%;margin:12px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:left}}th{{background:#f5f5f5}}img{{max-width:100%}}</style>
+    reports_dir = Path("reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    report_name = f"{end_date.isoformat()}_{strategy_slug}.html"
+    report_path = reports_dir / report_name
+
+    html_report = f"""
+<html><head><meta charset='utf-8'><title>Strategy Report</title>
+<style>body{{font-family:Arial,sans-serif;max-width:1080px;margin:24px auto;line-height:1.35}}table{{border-collapse:collapse;width:100%;margin:12px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:left}}th{{background:#f5f5f5}}pre{{background:#fafafa;border:1px solid #eee;padding:12px;overflow-x:auto}}img{{max-width:100%}}</style>
 </head><body>
-<h1>Portfolio Engine Backtest Report</h1>
-<p><b>Strategy:</b> static 60/40 SPY/TLT | <b>Tickers:</b> SPY, TLT | <b>Date range:</b> {dates[0]} to {dates[-1]}<br>
-<b>Rebalance rule:</b> monthly month-change via engine rebalancer | <b>Transaction cost assumption:</b> 0 bps (slippage 0 bps)</p>
-<h2>Summary Metrics</h2>
-{metrics.to_html(index=False, escape=False)}
+<h1>Strategy Report: {html.escape(strategy_name)}</h1>
+<p><b>Tickers:</b> SPY, TLT<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:.2f}</p>
+<h2>Config Snapshot</h2><pre>{html.escape(json.dumps(raw_config, indent=2))}</pre>
+<h2>Summary Metrics</h2>{metrics.to_html(index=False, escape=False)}
 <h2>Equity Curve</h2><img src='data:image/png;base64,{equity_b64}' />
 <h2>Drawdown</h2><img src='data:image/png;base64,{dd_b64}' />
-<h2>Annual Returns</h2>
-{annual_returns.rename('annual_return').to_frame().to_html()}
+<h2>Annual Returns</h2>{annual_returns.rename('annual_return').to_frame().to_html()}
+<h2>Weight Allocation Table</h2>{weights_df.to_html(index=False)}
 <h2>Methodology & Assumptions</h2>
 <ul>
-<li>Returns are simple close-to-close percentage returns: P_t / P_{{t-1}} - 1.</li>
-<li>At each monthly timestamp, engine generates target holdings and trades only if rebalancing is due.</li>
-<li>Data is deterministic synthetic monthly prices generated in backtest.py; no external data feed.</li>
-<li>Calendar assumption uses day 28 as month-end proxy; timezone Australia/Brisbane.</li>
-<li>No transaction costs, no slippage, no taxes, no borrow/leverage modeling.</li>
+<li>Asset returns: simple close-to-close returns, P_t / P_{{t-1}} - 1.</li>
+<li>Rebalancing: engine produces target holdings monthly; trades executed on rebalance months only.</li>
+<li>Data: deterministic synthetic monthly prices generated in this script (no external feed).</li>
+<li>Assumptions: no taxes, no transaction costs, no slippage, no leverage/borrow modeling beyond engine behavior.</li>
 </ul>
 </body></html>
 """
-    (output_dir / "report.html").write_text(html, encoding="utf-8")
-    print("Saved: outputs/report.html")
+    report_path.write_text(html_report, encoding="utf-8")
+
+    print(f"CONFIG: config.yaml (strategy={strategy_name})")
+    print(f"DATE_RANGE: {start_date.isoformat()} to {end_date.isoformat()}")
+    print(f"METRICS: total_return={total_return:.6f}, cagr={cagr:.6f}, vol={vol:.6f}, sharpe={sharpe:.6f}, max_drawdown={mdd:.6f}, turnover={turnover:.6f}")
+    print(f"REPORT_PATH: {report_path}")
+
+    if publish:
+        git_cmd(["git", "add", "reports"])
+        git_cmd(["git", "commit", "-m", f"Add report {report_name}"])
+        git_cmd(["git", "push", "origin", "main"])
+        commit_hash = git_cmd(["git", "rev-parse", "--short", "HEAD"])
+        print(f"PUBLISH_COMMIT: {commit_hash}")
 
 
 if __name__ == "__main__":
-    run_backtest()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--publish", action="store_true")
+    args = parser.parse_args()
+    run_backtest(publish=args.publish)
