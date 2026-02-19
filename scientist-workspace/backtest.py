@@ -155,25 +155,67 @@ def run_backtest(publish: bool = False) -> None:
     report_name = f"{end_date.isoformat()}_{strategy_slug}.html"
     report_path = reports_dir / report_name
 
+    annual_df = annual_returns.rename("annual_return").to_frame().reset_index()
+    annual_df["annual_return"] = annual_df["annual_return"].map(lambda x: f"{x:.2%}")
+    weights_fmt = weights_df.copy()
+    for col in ["SPY", "TLT"]:
+        if col in weights_fmt.columns:
+            weights_fmt[col] = weights_fmt[col].map(lambda x: f"{float(x):.2%}")
+
+    def table_html(df_in: pd.DataFrame, numeric_cols: set[str]) -> str:
+        cols = list(df_in.columns)
+        thead = "".join(
+            f"<th{' class=\"num\"' if c in numeric_cols else ''}>{html.escape(str(c))}</th>"
+            for c in cols
+        )
+        body_rows = []
+        for _, row in df_in.iterrows():
+            tds = []
+            for c in cols:
+                cls = " class=\"num\"" if c in numeric_cols else ""
+                tds.append(f"<td{cls}>{html.escape(str(row[c]))}</td>")
+            body_rows.append("<tr>" + "".join(tds) + "</tr>")
+        return f"<table><thead><tr>{thead}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
+
+    metrics_html = table_html(metrics, {"Value"})
+    annual_html = table_html(annual_df, {"annual_return"})
+    weights_html = table_html(weights_fmt, {"SPY", "TLT"})
+
     html_report = f"""
 <html><head><meta charset='utf-8'><title>Strategy Report</title>
-<style>body{{font-family:Arial,sans-serif;max-width:1080px;margin:24px auto;line-height:1.35}}table{{border-collapse:collapse;width:100%;margin:12px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:left}}th{{background:#f5f5f5}}pre{{background:#fafafa;border:1px solid #eee;padding:12px;overflow-x:auto}}img{{max-width:100%}}</style>
-</head><body>
+<style>
+  :root {{ --bg:#ffffff; --text:#111827; --muted:#4b5563; --line:#e5e7eb; --head:#f3f4f6; --code:#f8fafc; }}
+  body {{ margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Noto Sans",sans-serif; line-height:1.45; }}
+  .container {{ max-width:1100px; margin:28px auto; padding:0 20px 28px; }}
+  h1 {{ font-size:32px; margin:0 0 14px; letter-spacing:-0.02em; }}
+  h2 {{ font-size:20px; margin:30px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--line); }}
+  .subhead {{ border:1px solid var(--line); border-radius:10px; background:#fafafa; padding:14px 16px; color:var(--muted); }}
+  .subhead b {{ color:var(--text); }}
+  table {{ border-collapse:collapse; width:100%; margin:10px 0 0; font-size:14px; }}
+  th, td {{ border:1px solid var(--line); padding:8px 10px; }}
+  th {{ background:var(--head); text-align:left; font-weight:600; }}
+  td.num, th.num {{ text-align:right; font-variant-numeric:tabular-nums; }}
+  pre {{ background:var(--code); border:1px solid var(--line); border-radius:10px; padding:14px; overflow-x:auto; margin:0; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace; font-size:13px; white-space:pre; }}
+  .chart img {{ width:100%; height:auto; border:1px solid var(--line); border-radius:8px; }}
+  ul {{ margin:8px 0 0 18px; padding:0; }}
+</style>
+</head><body><div class='container'>
 <h1>Strategy Report: {html.escape(strategy_name)}</h1>
-<p><b>Tickers:</b> SPY, TLT<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:.2f}</p>
+<div class='subhead'><b>Tickers:</b> SPY, TLT<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:,.2f}</div>
 <h2>Config Snapshot</h2><pre>{html.escape(json.dumps(raw_config, indent=2))}</pre>
-<h2>Summary Metrics</h2>{metrics.to_html(index=False, escape=False)}
-<h2>Equity Curve</h2><img src='data:image/png;base64,{equity_b64}' />
-<h2>Drawdown</h2><img src='data:image/png;base64,{dd_b64}' />
-<h2>Annual Returns</h2>{annual_returns.rename('annual_return').to_frame().to_html()}
-<h2>Weight Allocation Table</h2>{weights_df.to_html(index=False)}
-<h2>Methodology & Assumptions</h2>
+<h2>Summary Metrics</h2>{metrics_html}
+<h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
+<h2>Drawdown</h2><div class='chart'><img src='data:image/png;base64,{dd_b64}' /></div>
+<h2>Annual Returns</h2>{annual_html}
+<h2>Weight Allocation</h2>{weights_html}
+<h2>Methodology</h2>
 <ul>
 <li>Asset returns: simple close-to-close returns, P_t / P_{{t-1}} - 1.</li>
 <li>Rebalancing: engine produces target holdings monthly; trades executed on rebalance months only.</li>
 <li>Data: deterministic synthetic monthly prices generated in this script (no external feed).</li>
 <li>Assumptions: no taxes, no transaction costs, no slippage, no leverage/borrow modeling beyond engine behavior.</li>
 </ul>
+</div>
 </body></html>
 """
     report_path.write_text(html_report, encoding="utf-8")
