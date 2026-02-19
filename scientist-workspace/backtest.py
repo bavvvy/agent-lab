@@ -7,7 +7,7 @@ import io
 import json
 import math
 import subprocess
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
 
@@ -152,8 +152,8 @@ def run_backtest(publish: bool = False) -> None:
 
     reports_dir = Path("reports")
     reports_dir.mkdir(parents=True, exist_ok=True)
-    report_name = f"{end_date.isoformat()}_{strategy_slug}.html"
-    report_path = reports_dir / report_name
+    dashboard_name = f"{strategy_slug}.html"
+    report_path = reports_dir / dashboard_name
 
     annual_df = annual_returns.rename("annual_return").to_frame().reset_index()
     annual_df["annual_return"] = annual_df["annual_return"].map(lambda x: f"{x:.2%}")
@@ -226,12 +226,19 @@ def run_backtest(publish: bool = False) -> None:
     print(f"REPORT_PATH: {report_path}")
 
     if publish:
-        git_cmd(["git", "add", str(report_path)])
+        archive_dir = reports_dir / "archive"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+        archive_name = f"{ts_utc}_{strategy_slug}.html"
+        archive_path = archive_dir / archive_name
+        archive_path.write_text(html_report, encoding="utf-8")
+
+        git_cmd(["git", "add", str(report_path), str(archive_path)])
         has_staged_changes = subprocess.call(["git", "diff", "--cached", "--quiet"]) != 0
         if not has_staged_changes:
             print("PUBLISH: No changes detected. Skipping commit.")
         else:
-            git_cmd(["git", "commit", "-m", f"Add report {report_name}"])
+            git_cmd(["git", "commit", "-m", f"Add report {dashboard_name}"])
             git_cmd(["git", "push"])
             print("PUBLISH: Report committed and pushed.")
 
