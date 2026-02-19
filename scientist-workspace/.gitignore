@@ -5,13 +5,13 @@
 __pycache__/
 *.pyc
 
-# Backtest outputs
-outputs/*.png
-outputs/*.csv
-outputs/*.json
-outputs/*.html
-
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Ignore temporary outputs
+outputs/
+
+# Allow versioned reports
+!reports/
 

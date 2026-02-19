@@ -15,3 +15,16 @@ dist/
 
 # OS
 .DS_Store
+
+# --- Local agent infrastructure ---
+archive/
+AGENTS.md
+BOOTSTRAP.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
+
+# --- Generated runs ---
+runs/
