@@ -184,11 +184,14 @@ def run_backtest(publish: bool = False) -> None:
     print(f"REPORT_PATH: {report_path}")
 
     if publish:
-        git_cmd(["git", "add", "reports"])
-        git_cmd(["git", "commit", "-m", f"Add report {report_name}"])
-        git_cmd(["git", "push", "origin", "main"])
-        commit_hash = git_cmd(["git", "rev-parse", "--short", "HEAD"])
-        print(f"PUBLISH_COMMIT: {commit_hash}")
+        git_cmd(["git", "add", str(report_path)])
+        has_staged_changes = subprocess.call(["git", "diff", "--cached", "--quiet"]) != 0
+        if not has_staged_changes:
+            print("PUBLISH: No changes detected. Skipping commit.")
+        else:
+            git_cmd(["git", "commit", "-m", f"Add report {report_name}"])
+            git_cmd(["git", "push"])
+            print("PUBLISH: Report committed and pushed.")
 
 
 if __name__ == "__main__":
