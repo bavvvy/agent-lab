@@ -18,6 +18,8 @@ dist/
 
 # --- Local agent infrastructure ---
 archive/
+!reports/archive/
+!reports/archive/**
 AGENTS.md
 BOOTSTRAP.md
 HEARTBEAT.md

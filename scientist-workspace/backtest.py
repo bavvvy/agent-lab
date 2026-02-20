@@ -150,7 +150,7 @@ def run_backtest(publish: bool = False) -> None:
         columns=["Metric", "Value"],
     )
 
-    reports_dir = Path("reports")
+    reports_dir = Path("../reports")
     reports_dir.mkdir(parents=True, exist_ok=True)
     dashboard_name = f"{strategy_slug}.html"
     report_path = reports_dir / dashboard_name
