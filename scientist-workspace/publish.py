@@ -70,9 +70,14 @@ def main() -> int:
     workspace = Path(__file__).resolve().parent
     repo_root = workspace.parent
 
+    strategy_raw = args.strategy
+    strategy = strategy_raw.replace("-", "_")
+
     # Current engine/backtest supports one deterministic strategy path.
-    if args.strategy != "beta_engine_60_40":
-        print(f"Unsupported strategy: {args.strategy}. Supported: beta_engine_60_40")
+    if strategy != "beta_engine_60_40":
+        print(
+            f"Unsupported strategy: {strategy_raw}. Supported: beta_engine_60_40, beta-engine-60-40"
+        )
         return 2
 
     subprocess.check_call([sys.executable, "backtest.py"], cwd=str(workspace), env={**os.environ, "PYTHONPATH": "."})
@@ -82,7 +87,7 @@ def main() -> int:
     run(["git", "add", "-A"], repo_root)
     has_staged = subprocess.call(["git", "diff", "--cached", "--quiet"], cwd=str(repo_root)) != 0
     if has_staged:
-        run(["git", "commit", "-m", f"Publish {args.strategy} report"], repo_root)
+        run(["git", "commit", "-m", f"Publish {strategy} report"], repo_root)
         run(["git", "push", "origin", "main"], repo_root)
 
     local = run(["git", "rev-parse", "HEAD"], repo_root)
