@@ -242,13 +242,23 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 
     annual_returns = monthly.assign(year=monthly["date"].dt.year).groupby("year")["ret"].apply(lambda x: (1 + x).prod() - 1)
 
-    rolling_5y = _rolling_5y_cagr(df)
+    rolling_5y = _rolling_5y_cagr(df).rename(columns={"rolling_5y_cagr": "rolling_60m_cagr"})
 
-    rolling_3y = monthly[["date", "ret"]].copy()
-    rolling_3y["rolling_vol_3y"] = rolling_3y["ret"].rolling(window=36).std(ddof=1) * math.sqrt(12)
-    roll_mean = rolling_3y["ret"].rolling(window=36).mean() * 12
-    rolling_3y["rolling_sharpe_3y"] = roll_mean / rolling_3y["rolling_vol_3y"]
-    rolling_3y = rolling_3y.dropna(subset=["rolling_vol_3y", "rolling_sharpe_3y"])
+    rolling_60 = monthly[["date", "ret"]].copy()
+    rolling_60["rolling_60m_vol"] = rolling_60["ret"].rolling(window=60).std(ddof=1) * math.sqrt(12)
+    roll_mean_60 = rolling_60["ret"].rolling(window=60).mean() * 12
+    rolling_60["rolling_60m_sharpe"] = roll_mean_60 / rolling_60["rolling_60m_vol"]
+
+    rolling_36 = monthly[["date", "ret"]].copy()
+    roll_mean_36 = rolling_36["ret"].rolling(window=36).mean() * 12
+    rolling_36["rolling_36m_vol"] = rolling_36["ret"].rolling(window=36).std(ddof=1) * math.sqrt(12)
+    rolling_36["rolling_36m_sharpe"] = roll_mean_36 / rolling_36["rolling_36m_vol"]
+
+    rolling_table = rolling_5y[["date", "rolling_60m_cagr"]].merge(
+        rolling_60[["date", "rolling_60m_vol", "rolling_60m_sharpe"]], on="date", how="left"
+    ).merge(
+        rolling_36[["date", "rolling_36m_sharpe"]], on="date", how="left"
+    ).dropna(subset=["rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"])
 
     fig1 = plt.figure(figsize=(9, 4))
     plt.plot(df["date"], df["equity"], lw=2)
@@ -264,23 +274,23 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     dd_b64 = fig_to_base64(fig2)
 
     fig3 = plt.figure(figsize=(9, 3.8))
-    if not rolling_5y.empty:
-        plt.plot(rolling_5y["date"], rolling_5y["rolling_5y_cagr"], lw=2)
+    if not rolling_table.empty:
+        plt.plot(rolling_table["date"], rolling_table["rolling_60m_cagr"], lw=2)
     plt.title("Rolling 5Y CAGR (60M window)")
     plt.grid(alpha=0.3)
     rolling5_b64 = fig_to_base64(fig3)
 
     fig4 = plt.figure(figsize=(9, 3.8))
-    if not rolling_3y.empty:
-        plt.plot(rolling_3y["date"], rolling_3y["rolling_vol_3y"], lw=2)
-    plt.title("Rolling 3Y Volatility (36M window)")
+    if not rolling_table.empty:
+        plt.plot(rolling_table["date"], rolling_table["rolling_60m_vol"], lw=2)
+    plt.title("Rolling 5Y Volatility (60M window)")
     plt.grid(alpha=0.3)
     rolling_vol_b64 = fig_to_base64(fig4)
 
     fig5 = plt.figure(figsize=(9, 3.8))
-    if not rolling_3y.empty:
-        plt.plot(rolling_3y["date"], rolling_3y["rolling_sharpe_3y"], lw=2)
-    plt.title("Rolling 3Y Sharpe (rf=0, 36M window)")
+    if not rolling_table.empty:
+        plt.plot(rolling_table["date"], rolling_table["rolling_60m_sharpe"], lw=2)
+    plt.title("Rolling 5Y Sharpe (rf=0, 60M window)")
     plt.grid(alpha=0.3)
     rolling_sharpe_b64 = fig_to_base64(fig5)
 
@@ -309,6 +319,23 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     def _fmt_pct(x: float) -> str:
         return f"{float(x) * 100:.2f}%"
 
+    monthly_table = pd.DataFrame({
+        "date": df["date"].dt.date.astype(str),
+        "portfolio_value": df["equity"],
+        "monthly_return": df["ret"],
+    })
+    monthly_table["cumulative_return"] = (1 + monthly_table["monthly_return"]).cumprod() - 1
+    weights_for_monthly = weights_df.copy()
+    weights_for_monthly["date"] = weights_for_monthly["date"].astype(str)
+    for t in tickers:
+        if t in weights_for_monthly.columns:
+            weights_for_monthly = weights_for_monthly.rename(columns={t: f"weight_{t}"})
+    monthly_table = monthly_table.merge(weights_for_monthly, on="date", how="left")
+
+    rolling_metrics_table = rolling_table.copy()
+    if not rolling_metrics_table.empty:
+        rolling_metrics_table["date"] = pd.to_datetime(rolling_metrics_table["date"]).dt.date.astype(str)
+
     weights_fmt = weights_df.copy()
     for col in tickers:
         if col in weights_fmt.columns:
@@ -334,9 +361,30 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
             body_rows.append("<tr>" + "".join(tds) + "</tr>")
         return f"<table><thead><tr>{thead}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
 
+    monthly_fmt = monthly_table.copy()
+    monthly_fmt["portfolio_value"] = monthly_fmt["portfolio_value"].map(lambda x: f"{float(x):.2f}")
+    monthly_fmt["monthly_return"] = monthly_fmt["monthly_return"].map(_fmt_pct)
+    monthly_fmt["cumulative_return"] = monthly_fmt["cumulative_return"].map(_fmt_pct)
+    for c in monthly_fmt.columns:
+        if c.startswith("weight_"):
+            monthly_fmt[c] = monthly_fmt[c].map(lambda x: _fmt_pct(float(x)) if pd.notna(x) else "")
+
+    rolling_fmt = rolling_metrics_table.copy()
+    if not rolling_fmt.empty:
+        rolling_fmt["rolling_60m_cagr"] = rolling_fmt["rolling_60m_cagr"].map(_fmt_pct)
+        rolling_fmt["rolling_60m_vol"] = rolling_fmt["rolling_60m_vol"].map(_fmt_pct)
+        rolling_fmt["rolling_60m_sharpe"] = rolling_fmt["rolling_60m_sharpe"].map(lambda x: f"{float(x):.3f}")
+        if "rolling_36m_sharpe" in rolling_fmt.columns:
+            rolling_fmt["rolling_36m_sharpe"] = rolling_fmt["rolling_36m_sharpe"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
+
     metrics_html = table_html(metrics, {"Value"})
     annual_html = table_html(annual_df, {"annual_return"})
     weights_html = table_html(weights_fmt, set(tickers))
+    monthly_data_html = table_html(monthly_fmt, {c for c in monthly_fmt.columns if c != "date"})
+    rolling_metrics_html = table_html(
+        rolling_fmt if not rolling_fmt.empty else pd.DataFrame(columns=["date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe", "rolling_36m_sharpe"]),
+        {"rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe", "rolling_36m_sharpe"},
+    )
 
     cfg_engine = raw_config.get("engine", {})
     cfg_overlays = raw_config.get("overlays", {})
@@ -403,8 +451,10 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 <h2>Drawdown</h2><div class='chart'><img src='data:image/png;base64,{dd_b64}' /></div>
 <h2>Annual Returns</h2>{annual_html}
 <h2>Rolling 5Y CAGR</h2><div class='chart'><img src='data:image/png;base64,{rolling5_b64}' /></div>
-<h2>Rolling 3Y Volatility</h2><div class='chart'><img src='data:image/png;base64,{rolling_vol_b64}' /></div>
-<h2>Rolling 3Y Sharpe (rf=0)</h2><div class='chart'><img src='data:image/png;base64,{rolling_sharpe_b64}' /></div>
+<h2>Rolling 5Y Volatility</h2><div class='chart'><img src='data:image/png;base64,{rolling_vol_b64}' /></div>
+<h2>Rolling 5Y Sharpe (rf=0)</h2><div class='chart'><img src='data:image/png;base64,{rolling_sharpe_b64}' /></div>
+<h2>Monthly Portfolio Data</h2>{monthly_data_html}
+<h2>Rolling Metrics (60M window)</h2>{rolling_metrics_html}
 <h2>Weight Allocation</h2>{weights_html}
 <h2>Methodology</h2>
 <ul>
