@@ -44,7 +44,7 @@ def git_cmd(args: list[str]) -> str:
     return subprocess.check_output(args, text=True).strip()
 
 
-def _load_validated_prices() -> pd.DataFrame:
+def _load_validated_prices() -> tuple[pd.DataFrame, dict[str, str | int]]:
     if not DATA_PATH.exists():
         raise FileNotFoundError("prices_master.parquet not found. Run data/update_prices.py first.")
 
@@ -64,18 +64,37 @@ def _load_validated_prices() -> pd.DataFrame:
         df.index = df.index.tz_convert(None)
 
     df = df.sort_index()
+    raw_stats = {
+        "RAW_START": str(df.index.min().date()),
+        "RAW_END": str(df.index.max().date()),
+        "RAW_ROWS": int(len(df)),
+    }
 
-    # Use only fully populated rows for required instruments.
-    df = df.dropna(subset=REQUIRED_COLUMNS)
-    if df.empty:
+    required = df[REQUIRED_COLUMNS].copy()
+    effective = required.dropna()
+    if effective.empty:
         raise ValueError(f"Dataset contains no complete rows for required columns: {REQUIRED_COLUMNS}")
-    if df[REQUIRED_COLUMNS].isna().any().any():
-        raise ValueError(f"Dataset contains missing values in required columns: {REQUIRED_COLUMNS}")
 
-    if not df.index.is_monotonic_increasing:
+    effective_stats = {
+        "EFFECTIVE_START": str(effective.index.min().date()),
+        "EFFECTIVE_END": str(effective.index.max().date()),
+        "EFFECTIVE_ROWS": int(len(effective)),
+    }
+
+    if not effective.index.is_monotonic_increasing:
         raise ValueError("Dataset index must be sorted ascending")
 
-    return df[REQUIRED_COLUMNS].copy()
+    # Enforce no NaNs inside effective window.
+    in_window = required.loc[effective.index.min() : effective.index.max()]
+    if in_window.isna().any().any():
+        raise ValueError("Required tickers contain NaNs inside effective analysis window")
+
+    # Informational note for pre-effective NaNs (e.g., ETF inception mismatch).
+    pre_window = required.loc[required.index < effective.index.min()]
+    if not pre_window.empty and pre_window.isna().any().any():
+        print("INFO: NaNs detected before EFFECTIVE_START (likely ETF inception alignment).")
+
+    return effective, {**raw_stats, **effective_stats}
 
 
 def run_backtest(publish: bool = False) -> None:
@@ -89,10 +108,13 @@ def run_backtest(publish: bool = False) -> None:
     )
     strategy_slug = strategy_name.replace("_", "-").lower()
 
-    prices_daily = _load_validated_prices()
-    print(f"DATASET_START: {prices_daily.index.min().date()}")
-    print(f"DATASET_END: {prices_daily.index.max().date()}")
-    print(f"DATASET_ROWS: {len(prices_daily)}")
+    prices_daily, stats = _load_validated_prices()
+    print(f"RAW_START: {stats['RAW_START']}")
+    print(f"RAW_END: {stats['RAW_END']}")
+    print(f"RAW_ROWS: {stats['RAW_ROWS']}")
+    print(f"EFFECTIVE_START: {stats['EFFECTIVE_START']}")
+    print(f"EFFECTIVE_END: {stats['EFFECTIVE_END']}")
+    print(f"EFFECTIVE_ROWS: {stats['EFFECTIVE_ROWS']}")
     print(f"DATASET_TICKERS: {', '.join(REQUIRED_COLUMNS)}")
 
     prices = prices_daily.groupby(prices_daily.index.to_period("M")).tail(1).copy()
