@@ -242,15 +242,13 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 
     annual_returns = monthly.assign(year=monthly["date"].dt.year).groupby("year")["ret"].apply(lambda x: (1 + x).prod() - 1)
 
-    beta_portfolio, _ = _load_portfolio("beta_60_40")
-    beta_tickers = list(beta_portfolio["tickers"].keys())
-    beta_prices_daily, _ = _load_validated_prices(beta_tickers)
-    beta_prices = beta_prices_daily.groupby(beta_prices_daily.index.to_period("M")).tail(1).copy()
-    beta_df, _, _ = _simulate_strategy(engine, beta_portfolio, beta_prices)
+    rolling_5y = _rolling_5y_cagr(df)
 
-    roll_strategy = _rolling_5y_cagr(df)
-    roll_beta = _rolling_5y_cagr(beta_df)
-    rolling = pd.merge(roll_strategy, roll_beta, on="date", how="inner", suffixes=("_strategy", "_beta"))
+    rolling_3y = monthly[["date", "ret"]].copy()
+    rolling_3y["rolling_vol_3y"] = rolling_3y["ret"].rolling(window=36).std(ddof=1) * math.sqrt(12)
+    roll_mean = rolling_3y["ret"].rolling(window=36).mean() * 12
+    rolling_3y["rolling_sharpe_3y"] = roll_mean / rolling_3y["rolling_vol_3y"]
+    rolling_3y = rolling_3y.dropna(subset=["rolling_vol_3y", "rolling_sharpe_3y"])
 
     fig1 = plt.figure(figsize=(9, 4))
     plt.plot(df["date"], df["equity"], lw=2)
@@ -266,13 +264,25 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     dd_b64 = fig_to_base64(fig2)
 
     fig3 = plt.figure(figsize=(9, 3.8))
-    if not rolling.empty:
-        plt.plot(rolling["date"], rolling["rolling_5y_cagr_strategy"], lw=2, label=strategy_name)
-        plt.plot(rolling["date"], rolling["rolling_5y_cagr_beta"], lw=2, label="beta_60_40")
+    if not rolling_5y.empty:
+        plt.plot(rolling_5y["date"], rolling_5y["rolling_5y_cagr"], lw=2)
     plt.title("Rolling 5Y CAGR (60M window)")
     plt.grid(alpha=0.3)
-    plt.legend()
-    rolling_b64 = fig_to_base64(fig3)
+    rolling5_b64 = fig_to_base64(fig3)
+
+    fig4 = plt.figure(figsize=(9, 3.8))
+    if not rolling_3y.empty:
+        plt.plot(rolling_3y["date"], rolling_3y["rolling_vol_3y"], lw=2)
+    plt.title("Rolling 3Y Volatility (36M window)")
+    plt.grid(alpha=0.3)
+    rolling_vol_b64 = fig_to_base64(fig4)
+
+    fig5 = plt.figure(figsize=(9, 3.8))
+    if not rolling_3y.empty:
+        plt.plot(rolling_3y["date"], rolling_3y["rolling_sharpe_3y"], lw=2)
+    plt.title("Rolling 3Y Sharpe (rf=0, 36M window)")
+    plt.grid(alpha=0.3)
+    rolling_sharpe_b64 = fig_to_base64(fig5)
 
     metrics = pd.DataFrame(
         [
@@ -324,27 +334,9 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
             body_rows.append("<tr>" + "".join(tds) + "</tr>")
         return f"<table><thead><tr>{thead}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
 
-    if rolling.empty:
-        rolling_summary = pd.DataFrame(
-            [["Mean 5Y CAGR", "N/A"], ["Min 5Y CAGR", "N/A"], ["Max 5Y CAGR", "N/A"], ["% periods strategy > beta_60_40", "N/A"]],
-            columns=["Metric", "Value"],
-        )
-    else:
-        pct_out = float((rolling["rolling_5y_cagr_strategy"] > rolling["rolling_5y_cagr_beta"]).mean())
-        rolling_summary = pd.DataFrame(
-            [
-                ["Mean 5Y CAGR", f"{rolling['rolling_5y_cagr_strategy'].mean():.2%}"],
-                ["Min 5Y CAGR", f"{rolling['rolling_5y_cagr_strategy'].min():.2%}"],
-                ["Max 5Y CAGR", f"{rolling['rolling_5y_cagr_strategy'].max():.2%}"],
-                ["% periods strategy > beta_60_40", f"{pct_out:.2%}"],
-            ],
-            columns=["Metric", "Value"],
-        )
-
     metrics_html = table_html(metrics, {"Value"})
     annual_html = table_html(annual_df, {"annual_return"})
     weights_html = table_html(weights_fmt, set(tickers))
-    rolling_summary_html = table_html(rolling_summary, {"Value"})
 
     cfg_engine = raw_config.get("engine", {})
     cfg_overlays = raw_config.get("overlays", {})
@@ -410,8 +402,9 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 <h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
 <h2>Drawdown</h2><div class='chart'><img src='data:image/png;base64,{dd_b64}' /></div>
 <h2>Annual Returns</h2>{annual_html}
-<h2>Rolling 5Y CAGR Analysis</h2><div class='chart'><img src='data:image/png;base64,{rolling_b64}' /></div>
-{rolling_summary_html}
+<h2>Rolling 5Y CAGR</h2><div class='chart'><img src='data:image/png;base64,{rolling5_b64}' /></div>
+<h2>Rolling 3Y Volatility</h2><div class='chart'><img src='data:image/png;base64,{rolling_vol_b64}' /></div>
+<h2>Rolling 3Y Sharpe (rf=0)</h2><div class='chart'><img src='data:image/png;base64,{rolling_sharpe_b64}' /></div>
 <h2>Weight Allocation</h2>{weights_html}
 <h2>Methodology</h2>
 <ul>
