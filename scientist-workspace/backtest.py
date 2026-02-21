@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import html
 import io
 import math
 import subprocess
@@ -19,6 +18,7 @@ import pandas as pd
 import yaml
 
 from portfolio_engine.engine import PortfolioEngine
+from report_template import render_strategy_report
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "prices_master.parquet"
 PORTFOLIO_DIR = Path(__file__).resolve().parent / "portfolios"
@@ -49,13 +49,6 @@ def _to_engine_symbol(ticker: str) -> str:
     return SYMBOL_MAP.get(ticker, ticker)
 
 
-def _to_portfolio_symbol(symbol: str) -> str:
-    for k, v in SYMBOL_MAP.items():
-        if v == symbol:
-            return k
-    return symbol
-
-
 def _load_portfolio(strategy: str) -> tuple[dict, Path]:
     candidate_names = [strategy, strategy.replace("-", "_")]
     path = None
@@ -66,7 +59,6 @@ def _load_portfolio(strategy: str) -> tuple[dict, Path]:
             break
 
     if path is None:
-        # Fallback: resolve by internal portfolio `name` field.
         for p in sorted(PORTFOLIO_DIR.glob("*.yaml")):
             payload = yaml.safe_load(p.read_text(encoding="utf-8"))
             if isinstance(payload, dict):
@@ -81,7 +73,6 @@ def _load_portfolio(strategy: str) -> tuple[dict, Path]:
     portfolio = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(portfolio, dict):
         raise ValueError("Portfolio file must define a mapping")
-
     if "name" not in portfolio or "tickers" not in portfolio or "rebalance" not in portfolio:
         raise ValueError("Portfolio YAML requires: name, tickers, rebalance")
 
@@ -144,11 +135,7 @@ def _load_validated_prices(required_columns: list[str]) -> tuple[pd.DataFrame, d
     return effective, {**raw_stats, **effective_stats}
 
 
-def _simulate_strategy(
-    engine: PortfolioEngine,
-    portfolio: dict,
-    prices: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, float]:
+def _simulate_strategy(engine: PortfolioEngine, portfolio: dict, prices: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, float]:
     tickers = list(portfolio["tickers"].keys())
     engine_weights = {_to_engine_symbol(k): float(v) for k, v in portfolio["tickers"].items()}
     engine.config.allocation_model.params["weights"] = engine_weights
@@ -176,23 +163,57 @@ def _simulate_strategy(
             last_reb = as_of
         equity.append(cash + sum(positions[s] * px[s] for s in positions))
 
-    df = pd.DataFrame({"date": prices.index, "equity": equity})
-    df["ret"] = df["equity"].pct_change().fillna(0.0)
+    df = pd.DataFrame({"date": prices.index, "portfolio_value": equity})
+    df["monthly_return"] = df["portfolio_value"].pct_change().fillna(0.0)
     weights_df = pd.DataFrame(weight_rows)
     turnover = float(sum(turnover_rows)) if turnover_rows else 0.0
     return df, weights_df, turnover
 
 
-def _rolling_5y_cagr(df: pd.DataFrame) -> pd.DataFrame:
-    if len(df) < 61:
-        return pd.DataFrame(columns=["date", "rolling_5y_cagr"])
-    out = []
-    eq = df["equity"].tolist()
-    dates = df["date"].tolist()
-    for i in range(0, len(eq) - 60):
-        cagr = (eq[i + 60] / eq[i]) ** (1 / 5) - 1
-        out.append({"date": dates[i + 60], "rolling_5y_cagr": cagr})
-    return pd.DataFrame(out)
+def _build_canonical_dataset(
+    df: pd.DataFrame,
+    weights_df: pd.DataFrame,
+    strategy_name: str,
+    publish_timestamp: str,
+    tickers: list[str],
+) -> pd.DataFrame:
+    base = df.copy()
+    base["date"] = pd.to_datetime(base["date"]).dt.date.astype(str)
+    base["cumulative_return"] = (1 + base["monthly_return"]).cumprod() - 1
+
+    weights = weights_df.copy()
+    for t in tickers:
+        if t in weights.columns:
+            weights = weights.rename(columns={t: f"weight_{t}"})
+
+    merged = base.merge(weights, on="date", how="left")
+
+    pv = merged["portfolio_value"].to_list()
+    rolling_cagr = [float("nan")] * len(pv)
+    for i in range(60, len(pv)):
+        rolling_cagr[i] = (pv[i] / pv[i - 60]) ** (1 / 5) - 1
+    merged["rolling_60m_cagr"] = rolling_cagr
+
+    roll_std = merged["monthly_return"].rolling(window=60).std(ddof=1) * math.sqrt(12)
+    roll_mean = merged["monthly_return"].rolling(window=60).mean() * 12
+    merged["rolling_60m_vol"] = roll_std
+    merged["rolling_60m_sharpe"] = roll_mean / roll_std
+
+    merged["strategy_name"] = strategy_name
+    merged["publish_timestamp"] = publish_timestamp
+
+    weight_cols = sorted([c for c in merged.columns if c.startswith("weight_")])
+    ordered = [
+        "date",
+        "portfolio_value",
+        "monthly_return",
+        "cumulative_return",
+        "rolling_60m_cagr",
+        "rolling_60m_vol",
+        "rolling_60m_sharpe",
+    ] + weight_cols + ["strategy_name", "publish_timestamp"]
+
+    return merged[ordered]
 
 
 def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str | None = None) -> None:
@@ -215,64 +236,65 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
     print(f"DATASET_TICKERS: {', '.join(tickers)}")
 
     prices = prices_daily.groupby(prices_daily.index.to_period("M")).tail(1).copy()
-
     start_date = prices.index.min().date()
     end_date = prices.index.max().date()
-    initial_capital = 10000.0
     transaction_cost_bps = 0
     slippage_bps = 0
     rebalance_rule = str(portfolio.get("rebalance", "monthly"))
+    publish_ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
     df, weights_df, turnover = _simulate_strategy(engine, portfolio, prices)
-    monthly = df.iloc[1:].copy()
+    canonical = _build_canonical_dataset(df, weights_df, strategy_name, publish_ts, tickers)
 
-    years = len(monthly) / 12
-    total_return = float(df["equity"].iloc[-1] / df["equity"].iloc[0] - 1)
+    if output_dataset_path:
+        out_path = Path(output_dataset_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        canonical.to_parquet(out_path, index=False)
+
+        csv_path = out_path.with_suffix(".csv")
+        canonical.to_csv(csv_path, index=False, float_format="%.10f")
+
+        print(f"CANONICAL_DATASET_PATH: {out_path}")
+        print(f"CANONICAL_DATASET_CSV_PATH: {csv_path}")
+
+    monthly = canonical.copy()
+    years = len(monthly.iloc[1:]) / 12
+    total_return = float(monthly["portfolio_value"].iloc[-1] / monthly["portfolio_value"].iloc[0] - 1)
     cagr = float((1 + total_return) ** (1 / years) - 1) if years > 0 else 0.0
-    vol = ann_std(monthly["ret"])
-    sharpe = float((monthly["ret"].mean() * 12) / vol) if vol > 0 else 0.0
-    mdd = max_drawdown(df["equity"])
-    best_idx = monthly["ret"].idxmax()
-    worst_idx = monthly["ret"].idxmin()
-    best_month = monthly.loc[best_idx, "date"].date().isoformat()
-    worst_month = monthly.loc[worst_idx, "date"].date().isoformat()
-    pct_pos = float((monthly["ret"] > 0).mean()) if len(monthly) else 0.0
-    periods = len(monthly)
-    turnover_annualised = (turnover / periods) * 12 if periods > 0 else 0.0
+    vol = ann_std(monthly["monthly_return"].iloc[1:])
+    sharpe = float((monthly["monthly_return"].iloc[1:].mean() * 12) / vol) if vol > 0 else 0.0
+    mdd = max_drawdown(monthly["portfolio_value"])
 
-    annual_returns = monthly.assign(year=monthly["date"].dt.year).groupby("year")["ret"].apply(lambda x: (1 + x).prod() - 1)
+    monthly_nonzero = monthly.iloc[1:].copy()
+    best_idx = monthly_nonzero["monthly_return"].idxmax()
+    worst_idx = monthly_nonzero["monthly_return"].idxmin()
+    best_month = str(monthly.loc[best_idx, "date"])
+    worst_month = str(monthly.loc[worst_idx, "date"])
+    pct_pos = float((monthly_nonzero["monthly_return"] > 0).mean()) if len(monthly_nonzero) else 0.0
+    turnover_annualised = (turnover / len(monthly_nonzero)) * 12 if len(monthly_nonzero) > 0 else 0.0
 
-    rolling_5y = _rolling_5y_cagr(df).rename(columns={"rolling_5y_cagr": "rolling_60m_cagr"})
-
-    rolling_60 = monthly[["date", "ret"]].copy()
-    rolling_60["rolling_60m_vol"] = rolling_60["ret"].rolling(window=60).std(ddof=1) * math.sqrt(12)
-    roll_mean_60 = rolling_60["ret"].rolling(window=60).mean() * 12
-    rolling_60["rolling_60m_sharpe"] = roll_mean_60 / rolling_60["rolling_60m_vol"]
-
-    rolling_36 = monthly[["date", "ret"]].copy()
-    roll_mean_36 = rolling_36["ret"].rolling(window=36).mean() * 12
-    rolling_36["rolling_36m_vol"] = rolling_36["ret"].rolling(window=36).std(ddof=1) * math.sqrt(12)
-    rolling_36["rolling_36m_sharpe"] = roll_mean_36 / rolling_36["rolling_36m_vol"]
-
-    rolling_table = rolling_5y[["date", "rolling_60m_cagr"]].merge(
-        rolling_60[["date", "rolling_60m_vol", "rolling_60m_sharpe"]], on="date", how="left"
-    ).merge(
-        rolling_36[["date", "rolling_36m_sharpe"]], on="date", how="left"
-    ).dropna(subset=["rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"])
+    annual_returns = (
+        monthly_nonzero.assign(year=pd.to_datetime(monthly_nonzero["date"]).dt.year)
+        .groupby("year")["monthly_return"]
+        .apply(lambda x: (1 + x).prod() - 1)
+        .reset_index(name="annual_return")
+    )
 
     fig1 = plt.figure(figsize=(9, 4))
-    plt.plot(df["date"], df["equity"], lw=2)
+    plt.plot(pd.to_datetime(monthly["date"]), monthly["portfolio_value"], lw=2)
     plt.title("Equity Curve")
     plt.grid(alpha=0.3)
     equity_b64 = fig_to_base64(fig1)
 
-    dd = df["equity"] / df["equity"].cummax() - 1.0
+    dd = monthly["portfolio_value"] / monthly["portfolio_value"].cummax() - 1.0
     fig2 = plt.figure(figsize=(9, 3.5))
-    plt.plot(df["date"], dd, color="crimson", lw=2)
+    plt.plot(pd.to_datetime(monthly["date"]), dd, color="crimson", lw=2)
     plt.title("Drawdown")
     plt.grid(alpha=0.3)
-    dd_b64 = fig_to_base64(fig2)
+    drawdown_b64 = fig_to_base64(fig2)
 
+    def _fmt_pct(x: float) -> str:
+        return f"{float(x) * 100:.2f}%"
 
     metrics = pd.DataFrame(
         [
@@ -281,195 +303,69 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
             ["Volatility", f"{vol:.2%}"],
             ["Sharpe (rf=0)", f"{sharpe:.3f}"],
             ["Max drawdown", f"{mdd:.2%}"],
-            ["Best month", f"{best_month} ({monthly.loc[best_idx, 'ret']:.2%})"],
-            ["Worst month", f"{worst_month} ({monthly.loc[worst_idx, 'ret']:.2%})"],
+            ["Best month", f"{best_month} ({monthly.loc[best_idx, 'monthly_return']:.2%})"],
+            ["Worst month", f"{worst_month} ({monthly.loc[worst_idx, 'monthly_return']:.2%})"],
             ["% positive months", f"{pct_pos:.2%}"],
             ["Turnover (annualised)", f"{turnover_annualised:.2%}"],
         ],
         columns=["Metric", "Value"],
     )
 
-    reports_dir = Path("../reports")
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    dashboard_name = f"{strategy_slug}.html"
-    report_path = reports_dir / dashboard_name
+    weight_cols = [c for c in canonical.columns if c.startswith("weight_")]
+    monthly_display = monthly[["date", "portfolio_value", "monthly_return", "cumulative_return", *weight_cols]].copy()
+    monthly_display["portfolio_value"] = monthly_display["portfolio_value"].map(lambda x: f"{float(x):.2f}")
+    monthly_display["monthly_return"] = monthly_display["monthly_return"].map(_fmt_pct)
+    monthly_display["cumulative_return"] = monthly_display["cumulative_return"].map(_fmt_pct)
+    for c in weight_cols:
+        monthly_display[c] = monthly_display[c].map(lambda x: _fmt_pct(float(x)) if pd.notna(x) else "")
 
-    annual_df = annual_returns.rename("annual_return").to_frame().reset_index()
-    annual_df["annual_return"] = annual_df["annual_return"].map(lambda x: f"{x:.2%}")
-    def _fmt_pct(x: float) -> str:
-        return f"{float(x) * 100:.2f}%"
-
-    monthly_table = pd.DataFrame({
-        "date": pd.to_datetime(df["date"]),
-        "portfolio_value": df["equity"],
-        "monthly_return": df["ret"],
-    })
-    monthly_table["cumulative_return"] = (1 + monthly_table["monthly_return"]).cumprod() - 1
-    weights_for_monthly = weights_df.copy()
-    weights_for_monthly["date"] = pd.to_datetime(weights_for_monthly["date"])
-    for t in tickers:
-        if t in weights_for_monthly.columns:
-            weights_for_monthly = weights_for_monthly.rename(columns={t: f"weight_{t}"})
-    monthly_table = monthly_table.merge(weights_for_monthly, on="date", how="left")
-
-    rolling_metrics_table = rolling_table.copy()
-    if not rolling_metrics_table.empty:
-        rolling_metrics_table["date"] = pd.to_datetime(rolling_metrics_table["date"])
-
-    canonical_dataset = monthly_table.merge(
-        rolling_metrics_table[["date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"]]
-        if not rolling_metrics_table.empty
-        else pd.DataFrame(columns=["date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"]),
-        on="date",
-        how="left",
+    weight_alloc = pd.DataFrame(
+        {
+            "Ticker": [t for t in tickers],
+            "Weight": [_fmt_pct(float(portfolio["tickers"][t])) for t in tickers],
+        }
     )
 
-    if output_dataset_path:
-        out_path = Path(output_dataset_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        canonical_dataset.to_parquet(out_path, index=False)
-
-        csv_path = out_path.with_suffix(".csv")
-        csv_dataset = canonical_dataset.copy()
-        csv_dataset["date"] = pd.to_datetime(csv_dataset["date"]).dt.strftime("%Y-%m-%d")
-        csv_dataset.to_csv(csv_path, index=False, float_format="%.10f")
-
-        print(f"CANONICAL_DATASET_PATH: {out_path}")
-        print(f"CANONICAL_DATASET_CSV_PATH: {csv_path}")
-
-    weights_fmt = weights_df.copy()
-    for col in tickers:
-        if col in weights_fmt.columns:
-            weights_fmt[col] = weights_fmt[col].map(_fmt_pct)
-
-    for col in tickers:
-        if col in weights_fmt.columns:
-            has_bare_float = weights_fmt[col].map(
-                lambda v: isinstance(v, (int, float)) and 0.0 <= float(v) <= 1.0
-            ).any()
-            if has_bare_float:
-                raise AssertionError(f"Unformatted weight cell detected in column {col}")
-
-    def table_html(df_in: pd.DataFrame, numeric_cols: set[str]) -> str:
-        cols = list(df_in.columns)
-        thead = "".join(f"<th{' class=\"num\"' if c in numeric_cols else ''}>{html.escape(str(c))}</th>" for c in cols)
-        body_rows = []
-        for _, rw in df_in.iterrows():
-            tds = []
-            for c in cols:
-                cls = " class=\"num\"" if c in numeric_cols else ""
-                tds.append(f"<td{cls}>{html.escape(str(rw[c]))}</td>")
-            body_rows.append("<tr>" + "".join(tds) + "</tr>")
-        return f"<table><thead><tr>{thead}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
-
-    monthly_fmt = monthly_table.copy()
-    monthly_fmt["date"] = pd.to_datetime(monthly_fmt["date"]).dt.date.astype(str)
-    monthly_fmt["portfolio_value"] = monthly_fmt["portfolio_value"].map(lambda x: f"{float(x):.2f}")
-    monthly_fmt["monthly_return"] = monthly_fmt["monthly_return"].map(_fmt_pct)
-    monthly_fmt["cumulative_return"] = monthly_fmt["cumulative_return"].map(_fmt_pct)
-    for c in monthly_fmt.columns:
-        if c.startswith("weight_"):
-            monthly_fmt[c] = monthly_fmt[c].map(lambda x: _fmt_pct(float(x)) if pd.notna(x) else "")
-
-    rolling_fmt = rolling_metrics_table.copy()
-    if not rolling_fmt.empty:
-        rolling_fmt["date"] = pd.to_datetime(rolling_fmt["date"]).dt.date.astype(str)
-        rolling_fmt["rolling_60m_cagr"] = rolling_fmt["rolling_60m_cagr"].map(_fmt_pct)
-        rolling_fmt["rolling_60m_vol"] = rolling_fmt["rolling_60m_vol"].map(_fmt_pct)
-        rolling_fmt["rolling_60m_sharpe"] = rolling_fmt["rolling_60m_sharpe"].map(lambda x: f"{float(x):.3f}")
-        if "rolling_36m_sharpe" in rolling_fmt.columns:
-            rolling_fmt["rolling_36m_sharpe"] = rolling_fmt["rolling_36m_sharpe"].map(lambda x: f"{float(x):.3f}" if pd.notna(x) else "")
-
-    metrics_html = table_html(metrics, {"Value"})
-    annual_html = table_html(annual_df, {"annual_return"})
-    weights_html = table_html(weights_fmt, set(tickers))
-    monthly_data_html = table_html(monthly_fmt, {c for c in monthly_fmt.columns if c != "date"})
-    rolling_metrics_html = table_html(
-        rolling_fmt if not rolling_fmt.empty else pd.DataFrame(columns=["date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe", "rolling_36m_sharpe"]),
-        {"rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe", "rolling_36m_sharpe"},
-    )
+    annual_display = annual_returns.copy()
+    annual_display["annual_return"] = annual_display["annual_return"].map(lambda x: f"{x:.2%}")
 
     cfg_engine = raw_config.get("engine", {})
     cfg_overlays = raw_config.get("overlays", {})
     cfg_rebalancer = raw_config.get("rebalancer", {})
     cfg_constraints = raw_config.get("constraints", {})
-    weights_items = "".join(
-        f"<li><span>{html.escape(str(k))}</span><span class='num'>{_fmt_pct(float(v))}</span></li>"
-        for k, v in sorted(portfolio["tickers"].items())
+
+    reports_dir = Path("../reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    report_path = reports_dir / f"{strategy_slug}.html"
+
+    html_report = render_strategy_report(
+        strategy_name=strategy_name,
+        tickers=tickers,
+        start_date=str(start_date),
+        end_date=str(end_date),
+        rebalance_rule=rebalance_rule,
+        transaction_cost_bps=transaction_cost_bps,
+        slippage_bps=slippage_bps,
+        initial_capital=10000.0,
+        engine_name=str(cfg_engine.get("name", "")),
+        engine_version=str(cfg_engine.get("version", "")),
+        portfolio_file=portfolio_path.name,
+        overlays=cfg_overlays,
+        rebalancer=cfg_rebalancer,
+        constraints=cfg_constraints,
+        weights=portfolio["tickers"],
+        metrics_df=metrics,
+        annual_returns_df=annual_display,
+        weight_alloc_df=weight_alloc,
+        monthly_data_df=monthly_display,
+        equity_chart_b64=equity_b64,
+        drawdown_chart_b64=drawdown_b64,
     )
 
-    config_snapshot_html = f"""
-<div class='config-grid'>
-  <div class='cfg-card'><h3>Engine</h3><ul>
-    <li><span>Name</span><span>{html.escape(str(cfg_engine.get('name', '')))}</span></li>
-    <li><span>Version</span><span>{html.escape(str(cfg_engine.get('version', '')))}</span></li>
-  </ul></div>
-  <div class='cfg-card'><h3>Strategy</h3><ul>
-    <li><span>Name</span><span>{html.escape(strategy_name)}</span></li>
-    <li><span>Portfolio File</span><span>{html.escape(portfolio_path.name)}</span></li>
-  </ul><h4>Weights</h4><ul>{weights_items}</ul></div>
-  <div class='cfg-card'><h3>Overlays</h3><ul>
-    <li><span>Risk</span><span>{html.escape(str(cfg_overlays.get('risk', '')))}</span></li>
-    <li><span>Regime</span><span>{html.escape(str(cfg_overlays.get('regime', '')))}</span></li>
-  </ul></div>
-  <div class='cfg-card'><h3>Rebalancer</h3><ul>
-    <li><span>Type</span><span>{html.escape(str(cfg_rebalancer.get('type', '')))}</span></li>
-  </ul></div>
-  <div class='cfg-card'><h3>Constraints</h3><ul>
-    <li><span>Leverage</span><span>{html.escape(str(cfg_constraints.get('leverage', '')))}</span></li>
-  </ul></div>
-</div>
-"""
-
-    html_report = f"""
-<html><head><meta charset='utf-8'><title>Strategy Report</title>
-<style>
-  :root {{ --bg:#ffffff; --text:#111827; --muted:#4b5563; --line:#e5e7eb; --head:#f3f4f6; --code:#f8fafc; }}
-  body {{ margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Noto Sans",sans-serif; line-height:1.45; }}
-  .container {{ max-width:1100px; margin:28px auto; padding:0 20px 28px; }}
-  h1 {{ font-size:32px; margin:0 0 14px; letter-spacing:-0.02em; }}
-  h2 {{ font-size:20px; margin:30px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--line); }}
-  .subhead {{ border:1px solid var(--line); border-radius:10px; background:#fafafa; padding:14px 16px; color:var(--muted); }}
-  .subhead b {{ color:var(--text); }}
-  table {{ border-collapse:collapse; width:100%; margin:10px 0 0; font-size:14px; }}
-  th, td {{ border:1px solid var(--line); padding:8px 10px; }}
-  th {{ background:var(--head); text-align:left; font-weight:600; }}
-  td.num, th.num {{ text-align:right; font-variant-numeric:tabular-nums; }}
-  .chart img {{ width:100%; height:auto; border:1px solid var(--line); border-radius:8px; }}
-  ul {{ margin:8px 0 0 18px; padding:0; }}
-  .config-grid {{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); }}
-  .cfg-card {{ background:var(--code); border:1px solid var(--line); border-radius:10px; padding:12px; }}
-  .cfg-card h3 {{ margin:0 0 8px; font-size:15px; }}
-  .cfg-card h4 {{ margin:10px 0 6px; font-size:13px; color:var(--muted); }}
-  .cfg-card ul {{ list-style:none; margin:0; padding:0; }}
-  .cfg-card li {{ display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed #e6e9ef; }}
-  .cfg-card li:last-child {{ border-bottom:none; }}
-</style>
-</head><body><div class='container'>
-<h1>Strategy Report: {html.escape(strategy_name)}</h1>
-<div class='subhead'><b>Tickers:</b> {', '.join(tickers)}<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:,.2f}</div>
-<h2>Config Snapshot</h2>{config_snapshot_html}
-<h2>Summary Metrics</h2>{metrics_html}
-<h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
-<h2>Drawdown</h2><div class='chart'><img src='data:image/png;base64,{dd_b64}' /></div>
-<h2>Annual Returns</h2>{annual_html}
-<h2>Monthly Portfolio Data</h2>{monthly_data_html}
-<h2>Weight Allocation</h2>{weights_html}
-<h2>Methodology</h2>
-<ul>
-<li>Asset returns: simple close-to-close returns, P_t / P_{{t-1}} - 1.</li>
-<li>Rebalancing: engine produces target holdings monthly; trades executed on rebalance months only.</li>
-<li>Data source: local canonical dataset from `data/prices_master.parquet` (no network calls).</li>
-<li>Assumptions: no taxes, no transaction costs, no slippage, no leverage/borrow modeling beyond engine behavior.</li>
-</ul>
-</div>
-</body></html>
-"""
     report_path.write_text(html_report, encoding="utf-8")
 
     print(f"CONFIG: {portfolio_path}")
-    print(f"DATE_RANGE: {start_date.isoformat()} to {end_date.isoformat()}")
+    print(f"DATE_RANGE: {start_date} to {end_date}")
     print(
         f"METRICS: total_return={total_return:.6f}, cagr={cagr:.6f}, vol={vol:.6f}, "
         f"sharpe={sharpe:.6f}, max_drawdown={mdd:.6f}, turnover={turnover:.6f}"
@@ -480,8 +376,7 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
         archive_dir = reports_dir / "archive"
         archive_dir.mkdir(parents=True, exist_ok=True)
         ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
-        archive_name = f"{ts_utc}_{strategy_slug}.html"
-        archive_path = archive_dir / archive_name
+        archive_path = archive_dir / f"{ts_utc}_{strategy_slug}.html"
         archive_path.write_text(html_report, encoding="utf-8")
 
         git_cmd(["git", "add", str(report_path), str(archive_path)])
@@ -489,7 +384,7 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
         if not has_staged_changes:
             print("PUBLISH: No changes detected. Skipping commit.")
         else:
-            git_cmd(["git", "commit", "-m", f"Add report {dashboard_name}"])
+            git_cmd(["git", "commit", "-m", f"Add report {strategy_slug}.html"])
             git_cmd(["git", "push"])
             print("PUBLISH: Report committed and pushed.")
 
