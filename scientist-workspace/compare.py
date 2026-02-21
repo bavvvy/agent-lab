@@ -5,6 +5,7 @@ import base64
 import io
 import math
 from datetime import datetime, timezone
+import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt

@@ -4,6 +4,7 @@ import argparse
 import os
 import subprocess
 import sys
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,26 +17,39 @@ def run(cmd: list[str], cwd: Path) -> str:
 
 def regenerate_index(repo_root: Path) -> None:
     reports = repo_root / "reports"
+    archive = reports / "archive"
     reports.mkdir(parents=True, exist_ok=True)
-    files = sorted([p for p in reports.glob("*.html") if p.name != "index.html"])
-    rows = report_rows_for_index(files)
-    count = len(rows)
+    archive.mkdir(parents=True, exist_ok=True)
 
-    body = []
-    for i, (fname, stem, _, dt) in enumerate(rows):
-        n = count - i
-        body.append(f"<tr><td class='num'>{n}</td><td>{stem}</td><td>{dt}</td><td><a href='{fname}'>{fname}</a></td></tr>")
-    tbody = "\n".join(body) if body else "<tr><td colspan='4'>No reports found.</td></tr>"
+    current_files = sorted([p for p in reports.glob("*.html") if p.name != "index.html"])
+    archive_files = sorted([p for p in archive.glob("*.html")])
+
+    current_rows = report_rows_for_index(current_files)
+    archive_rows = report_rows_for_index(archive_files)
+
+    def _rows_html(rows: list[tuple[str, str, float, str]], prefix: str = "") -> str:
+        if not rows:
+            return "<tr><td colspan='4'>No reports found.</td></tr>"
+        out = []
+        count = len(rows)
+        for i, (fname, stem, _, dt) in enumerate(rows):
+            n = count - i
+            link = f"{prefix}{fname}"
+            out.append(f"<tr><td class='num'>{n}</td><td>{stem}</td><td>{dt}</td><td><a href='{link}'>{fname}</a></td></tr>")
+        return "\n".join(out)
+
+    current_tbody = _rows_html(current_rows, "")
+    archive_tbody = _rows_html(archive_rows, "archive/")
 
     html = f"""<!doctype html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MS Report Dashboard</title>
   <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Arial, sans-serif; margin: 32px auto; max-width: 980px; padding: 0 16px; color: #111; }}
-    h1 {{ margin: 0 0 10px; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 32px auto; max-width: 980px; padding: 0 16px; color: #111; }}
+    h1 {{ margin: 0 0 10px; }} h2 {{ margin: 24px 0 10px; }}
     p {{ color: #555; margin: 0 0 16px; }}
     table {{ width: 100%; border-collapse: collapse; }}
     th, td {{ border: 1px solid #e5e7eb; padding: 10px; text-align: left; }}
@@ -47,10 +61,16 @@ def regenerate_index(repo_root: Path) -> None:
 </head>
 <body>
   <h1>MS Report Dashboard</h1>
-  <p>Reports sorted by filename timestamp (UTC), newest first. Legacy files are listed last.</p>
+  <p>Current reports are root-level timestamped files. Archive lists historical versions.</p>
+  <h2>Current Reports</h2>
   <table>
     <thead><tr><th>#</th><th>Report Name</th><th>Published (UTC)</th><th>Link</th></tr></thead>
-    <tbody>{tbody}</tbody>
+    <tbody>{current_tbody}</tbody>
+  </table>
+  <h2>Archive</h2>
+  <table>
+    <thead><tr><th>#</th><th>Report Name</th><th>Published (UTC)</th><th>Link</th></tr></thead>
+    <tbody>{archive_tbody}</tbody>
   </table>
 </body>
 </html>
@@ -111,6 +131,13 @@ def main() -> int:
     versioned_name = f"{ts_utc}_{strategy_slug}.html"
     ensure_timestamped_report_name(versioned_name, strategy_slug)
     versioned_path = reports_dir / versioned_name
+
+    archive_dir = reports_dir / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for existing in sorted(reports_dir.glob(f"*_{strategy_slug}.html")):
+        if existing.name != versioned_name:
+            shutil.move(str(existing), str(archive_dir / existing.name))
+
     versioned_path.write_text(dashboard_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     regenerate_index(repo_root)
