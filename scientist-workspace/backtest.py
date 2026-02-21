@@ -214,6 +214,8 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     worst_month = monthly.loc[worst_idx, "date"].date().isoformat()
     pct_pos = float((monthly["ret"] > 0).mean()) if len(monthly) else 0.0
     turnover = float(sum(turnover_rows)) if turnover_rows else 0.0
+    periods = len(monthly)
+    turnover_annualised = (turnover / periods) * 12 if periods > 0 else 0.0
 
     annual_returns = monthly.assign(year=monthly["date"].dt.year).groupby("year")["ret"].apply(lambda x: (1 + x).prod() - 1)
     weights_df = pd.DataFrame(weight_rows)
@@ -241,7 +243,7 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
             ["Best month", f"{best_month} ({monthly.loc[best_idx, 'ret']:.2%})"],
             ["Worst month", f"{worst_month} ({monthly.loc[worst_idx, 'ret']:.2%})"],
             ["% positive months", f"{pct_pos:.2%}"],
-            ["Turnover", f"{turnover:.2%}"],
+            ["Turnover (annualised)", f"{turnover_annualised:.2%}"],
         ],
         columns=["Metric", "Value"],
     )
