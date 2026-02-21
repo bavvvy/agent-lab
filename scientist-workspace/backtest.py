@@ -327,8 +327,16 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
     if output_dataset_path:
         out_path = Path(output_dataset_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+
         canonical_dataset.to_parquet(out_path, index=False)
+
+        csv_path = out_path.with_suffix(".csv")
+        csv_dataset = canonical_dataset.copy()
+        csv_dataset["date"] = pd.to_datetime(csv_dataset["date"]).dt.strftime("%Y-%m-%d")
+        csv_dataset.to_csv(csv_path, index=False, float_format="%.10f")
+
         print(f"CANONICAL_DATASET_PATH: {out_path}")
+        print(f"CANONICAL_DATASET_CSV_PATH: {csv_path}")
 
     weights_fmt = weights_df.copy()
     for col in tickers:
