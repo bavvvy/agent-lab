@@ -89,8 +89,16 @@ def main() -> int:
     if not portfolio_path.exists():
         raise FileNotFoundError(f"Portfolio not found: {portfolio_path}")
 
+    output_dataset_path = workspace / "output" / f"{strategy}.parquet"
     subprocess.check_call(
-        [sys.executable, "backtest.py", "--strategy", strategy],
+        [
+            sys.executable,
+            "backtest.py",
+            "--strategy",
+            strategy,
+            "--output-dataset-path",
+            str(output_dataset_path),
+        ],
         cwd=str(workspace),
         env={**os.environ, "PYTHONPATH": "."},
     )

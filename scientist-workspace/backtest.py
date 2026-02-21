@@ -195,7 +195,7 @@ def _rolling_5y_cagr(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def run_backtest(strategy: str, publish: bool = False) -> None:
+def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str | None = None) -> None:
     with open("config.yaml", "r", encoding="utf-8") as f:
         raw_config = yaml.safe_load(f)
     engine = PortfolioEngine.from_yaml("config.yaml")
@@ -320,13 +320,13 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
         return f"{float(x) * 100:.2f}%"
 
     monthly_table = pd.DataFrame({
-        "date": df["date"].dt.date.astype(str),
+        "date": pd.to_datetime(df["date"]),
         "portfolio_value": df["equity"],
         "monthly_return": df["ret"],
     })
     monthly_table["cumulative_return"] = (1 + monthly_table["monthly_return"]).cumprod() - 1
     weights_for_monthly = weights_df.copy()
-    weights_for_monthly["date"] = weights_for_monthly["date"].astype(str)
+    weights_for_monthly["date"] = pd.to_datetime(weights_for_monthly["date"])
     for t in tickers:
         if t in weights_for_monthly.columns:
             weights_for_monthly = weights_for_monthly.rename(columns={t: f"weight_{t}"})
@@ -334,7 +334,21 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 
     rolling_metrics_table = rolling_table.copy()
     if not rolling_metrics_table.empty:
-        rolling_metrics_table["date"] = pd.to_datetime(rolling_metrics_table["date"]).dt.date.astype(str)
+        rolling_metrics_table["date"] = pd.to_datetime(rolling_metrics_table["date"])
+
+    canonical_dataset = monthly_table.merge(
+        rolling_metrics_table[["date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"]]
+        if not rolling_metrics_table.empty
+        else pd.DataFrame(columns=["date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"]),
+        on="date",
+        how="left",
+    )
+
+    if output_dataset_path:
+        out_path = Path(output_dataset_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        canonical_dataset.to_parquet(out_path, index=False)
+        print(f"CANONICAL_DATASET_PATH: {out_path}")
 
     weights_fmt = weights_df.copy()
     for col in tickers:
@@ -362,6 +376,7 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
         return f"<table><thead><tr>{thead}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
 
     monthly_fmt = monthly_table.copy()
+    monthly_fmt["date"] = pd.to_datetime(monthly_fmt["date"]).dt.date.astype(str)
     monthly_fmt["portfolio_value"] = monthly_fmt["portfolio_value"].map(lambda x: f"{float(x):.2f}")
     monthly_fmt["monthly_return"] = monthly_fmt["monthly_return"].map(_fmt_pct)
     monthly_fmt["cumulative_return"] = monthly_fmt["cumulative_return"].map(_fmt_pct)
@@ -371,6 +386,7 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 
     rolling_fmt = rolling_metrics_table.copy()
     if not rolling_fmt.empty:
+        rolling_fmt["date"] = pd.to_datetime(rolling_fmt["date"]).dt.date.astype(str)
         rolling_fmt["rolling_60m_cagr"] = rolling_fmt["rolling_60m_cagr"].map(_fmt_pct)
         rolling_fmt["rolling_60m_vol"] = rolling_fmt["rolling_60m_vol"].map(_fmt_pct)
         rolling_fmt["rolling_60m_sharpe"] = rolling_fmt["rolling_60m_sharpe"].map(lambda x: f"{float(x):.3f}")
@@ -498,5 +514,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategy", required=True)
     parser.add_argument("--publish", action="store_true")
+    parser.add_argument("--output-dataset-path", default=None)
     args = parser.parse_args()
-    run_backtest(strategy=args.strategy, publish=args.publish)
+    run_backtest(strategy=args.strategy, publish=args.publish, output_dataset_path=args.output_dataset_path)

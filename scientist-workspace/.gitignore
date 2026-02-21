@@ -11,6 +11,7 @@ Thumbs.db
 
 # Ignore temporary outputs
 outputs/
+output/
 
 # Allow versioned reports
 !reports/
