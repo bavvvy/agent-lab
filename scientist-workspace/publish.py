@@ -82,6 +82,13 @@ def main() -> int:
 
     subprocess.check_call([sys.executable, "backtest.py"], cwd=str(workspace), env={**os.environ, "PYTHONPATH": "."})
 
+    strategy_slug = strategy.replace("_", "-")
+    reports_dir = repo_root / "reports"
+    dashboard_path = reports_dir / f"{strategy_slug}.html"
+    ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    versioned_path = reports_dir / f"{ts_utc}_{strategy_slug}.html"
+    versioned_path.write_text(dashboard_path.read_text(encoding="utf-8"), encoding="utf-8")
+
     regenerate_index(repo_root)
 
     run(["git", "add", "-A"], repo_root)
