@@ -18,10 +18,18 @@ def regenerate_index(repo_root: Path) -> None:
     files = sorted([p for p in reports.glob("*.html") if p.name != "index.html"])
     rows = []
     for p in files:
-        ts = run(["git", "log", "-1", "--format=%ct", "--", str(p.relative_to(repo_root))], repo_root)
-        epoch = int(ts) if ts else 0
-        dt = datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC") if epoch else "N/A"
-        rows.append((p.name, p.stem, epoch, dt))
+        name = p.name
+        parsed_dt = None
+        published = "Legacy"
+        try:
+            prefix = "_".join(name.split("_")[:2])
+            parsed_dt = datetime.strptime(prefix, "%Y-%m-%d_%H-%M").replace(tzinfo=timezone.utc)
+            published = parsed_dt.strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            parsed_dt = None
+            published = "Legacy"
+        sort_key = parsed_dt.timestamp() if parsed_dt else float("-inf")
+        rows.append((name, p.stem, sort_key, published))
     rows.sort(key=lambda x: x[2], reverse=True)
     count = len(rows)
 
