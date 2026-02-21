@@ -144,40 +144,18 @@ def _load_validated_prices(required_columns: list[str]) -> tuple[pd.DataFrame, d
     return effective, {**raw_stats, **effective_stats}
 
 
-def run_backtest(strategy: str, publish: bool = False) -> None:
-    with open("config.yaml", "r", encoding="utf-8") as f:
-        raw_config = yaml.safe_load(f)
-    engine = PortfolioEngine.from_yaml("config.yaml")
-
-    portfolio, portfolio_path = _load_portfolio(strategy)
-    strategy_name = str(portfolio["name"])
-    strategy_slug = strategy_name.replace("_", "-").lower()
+def _simulate_strategy(
+    engine: PortfolioEngine,
+    portfolio: dict,
+    prices: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, float]:
     tickers = list(portfolio["tickers"].keys())
-
     engine_weights = {_to_engine_symbol(k): float(v) for k, v in portfolio["tickers"].items()}
     engine.config.allocation_model.params["weights"] = engine_weights
 
-    prices_daily, stats = _load_validated_prices(tickers)
-    print(f"RAW_START: {stats['RAW_START']}")
-    print(f"RAW_END: {stats['RAW_END']}")
-    print(f"RAW_ROWS: {stats['RAW_ROWS']}")
-    print(f"EFFECTIVE_START: {stats['EFFECTIVE_START']}")
-    print(f"EFFECTIVE_END: {stats['EFFECTIVE_END']}")
-    print(f"EFFECTIVE_ROWS: {stats['EFFECTIVE_ROWS']}")
-    print(f"DATASET_TICKERS: {', '.join(tickers)}")
-
-    prices = prices_daily.groupby(prices_daily.index.to_period("M")).tail(1).copy()
-
-    start_date = prices.index.min().date()
-    end_date = prices.index.max().date()
-    initial_capital = 10000.0
-    transaction_cost_bps = 0
-    slippage_bps = 0
-    rebalance_rule = str(portfolio.get("rebalance", "monthly"))
-
     engine_symbols = [_to_engine_symbol(t) for t in tickers]
     engine_to_portfolio = {_to_engine_symbol(t): t for t in tickers}
-    cash, positions, last_reb = initial_capital, {s: 0.0 for s in engine_symbols}, None
+    cash, positions, last_reb = 10000.0, {s: 0.0 for s in engine_symbols}, None
     equity, weight_rows, turnover_rows = [], [], []
 
     for dt, row in prices.iterrows():
@@ -200,6 +178,52 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 
     df = pd.DataFrame({"date": prices.index, "equity": equity})
     df["ret"] = df["equity"].pct_change().fillna(0.0)
+    weights_df = pd.DataFrame(weight_rows)
+    turnover = float(sum(turnover_rows)) if turnover_rows else 0.0
+    return df, weights_df, turnover
+
+
+def _rolling_5y_cagr(df: pd.DataFrame) -> pd.DataFrame:
+    if len(df) < 61:
+        return pd.DataFrame(columns=["date", "rolling_5y_cagr"])
+    out = []
+    eq = df["equity"].tolist()
+    dates = df["date"].tolist()
+    for i in range(0, len(eq) - 60):
+        cagr = (eq[i + 60] / eq[i]) ** (1 / 5) - 1
+        out.append({"date": dates[i + 60], "rolling_5y_cagr": cagr})
+    return pd.DataFrame(out)
+
+
+def run_backtest(strategy: str, publish: bool = False) -> None:
+    with open("config.yaml", "r", encoding="utf-8") as f:
+        raw_config = yaml.safe_load(f)
+    engine = PortfolioEngine.from_yaml("config.yaml")
+
+    portfolio, portfolio_path = _load_portfolio(strategy)
+    strategy_name = str(portfolio["name"])
+    strategy_slug = strategy_name.replace("_", "-").lower()
+    tickers = list(portfolio["tickers"].keys())
+
+    prices_daily, stats = _load_validated_prices(tickers)
+    print(f"RAW_START: {stats['RAW_START']}")
+    print(f"RAW_END: {stats['RAW_END']}")
+    print(f"RAW_ROWS: {stats['RAW_ROWS']}")
+    print(f"EFFECTIVE_START: {stats['EFFECTIVE_START']}")
+    print(f"EFFECTIVE_END: {stats['EFFECTIVE_END']}")
+    print(f"EFFECTIVE_ROWS: {stats['EFFECTIVE_ROWS']}")
+    print(f"DATASET_TICKERS: {', '.join(tickers)}")
+
+    prices = prices_daily.groupby(prices_daily.index.to_period("M")).tail(1).copy()
+
+    start_date = prices.index.min().date()
+    end_date = prices.index.max().date()
+    initial_capital = 10000.0
+    transaction_cost_bps = 0
+    slippage_bps = 0
+    rebalance_rule = str(portfolio.get("rebalance", "monthly"))
+
+    df, weights_df, turnover = _simulate_strategy(engine, portfolio, prices)
     monthly = df.iloc[1:].copy()
 
     years = len(monthly) / 12
@@ -213,12 +237,20 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     best_month = monthly.loc[best_idx, "date"].date().isoformat()
     worst_month = monthly.loc[worst_idx, "date"].date().isoformat()
     pct_pos = float((monthly["ret"] > 0).mean()) if len(monthly) else 0.0
-    turnover = float(sum(turnover_rows)) if turnover_rows else 0.0
     periods = len(monthly)
     turnover_annualised = (turnover / periods) * 12 if periods > 0 else 0.0
 
     annual_returns = monthly.assign(year=monthly["date"].dt.year).groupby("year")["ret"].apply(lambda x: (1 + x).prod() - 1)
-    weights_df = pd.DataFrame(weight_rows)
+
+    beta_portfolio, _ = _load_portfolio("beta_60_40")
+    beta_tickers = list(beta_portfolio["tickers"].keys())
+    beta_prices_daily, _ = _load_validated_prices(beta_tickers)
+    beta_prices = beta_prices_daily.groupby(beta_prices_daily.index.to_period("M")).tail(1).copy()
+    beta_df, _, _ = _simulate_strategy(engine, beta_portfolio, beta_prices)
+
+    roll_strategy = _rolling_5y_cagr(df)
+    roll_beta = _rolling_5y_cagr(beta_df)
+    rolling = pd.merge(roll_strategy, roll_beta, on="date", how="inner", suffixes=("_strategy", "_beta"))
 
     fig1 = plt.figure(figsize=(9, 4))
     plt.plot(df["date"], df["equity"], lw=2)
@@ -232,6 +264,15 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     plt.title("Drawdown")
     plt.grid(alpha=0.3)
     dd_b64 = fig_to_base64(fig2)
+
+    fig3 = plt.figure(figsize=(9, 3.8))
+    if not rolling.empty:
+        plt.plot(rolling["date"], rolling["rolling_5y_cagr_strategy"], lw=2, label=strategy_name)
+        plt.plot(rolling["date"], rolling["rolling_5y_cagr_beta"], lw=2, label="beta_60_40")
+    plt.title("Rolling 5Y CAGR (60M window)")
+    plt.grid(alpha=0.3)
+    plt.legend()
+    rolling_b64 = fig_to_base64(fig3)
 
     metrics = pd.DataFrame(
         [
@@ -283,9 +324,27 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
             body_rows.append("<tr>" + "".join(tds) + "</tr>")
         return f"<table><thead><tr>{thead}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
 
+    if rolling.empty:
+        rolling_summary = pd.DataFrame(
+            [["Mean 5Y CAGR", "N/A"], ["Min 5Y CAGR", "N/A"], ["Max 5Y CAGR", "N/A"], ["% periods strategy > beta_60_40", "N/A"]],
+            columns=["Metric", "Value"],
+        )
+    else:
+        pct_out = float((rolling["rolling_5y_cagr_strategy"] > rolling["rolling_5y_cagr_beta"]).mean())
+        rolling_summary = pd.DataFrame(
+            [
+                ["Mean 5Y CAGR", f"{rolling['rolling_5y_cagr_strategy'].mean():.2%}"],
+                ["Min 5Y CAGR", f"{rolling['rolling_5y_cagr_strategy'].min():.2%}"],
+                ["Max 5Y CAGR", f"{rolling['rolling_5y_cagr_strategy'].max():.2%}"],
+                ["% periods strategy > beta_60_40", f"{pct_out:.2%}"],
+            ],
+            columns=["Metric", "Value"],
+        )
+
     metrics_html = table_html(metrics, {"Value"})
     annual_html = table_html(annual_df, {"annual_return"})
     weights_html = table_html(weights_fmt, set(tickers))
+    rolling_summary_html = table_html(rolling_summary, {"Value"})
 
     cfg_engine = raw_config.get("engine", {})
     cfg_overlays = raw_config.get("overlays", {})
@@ -351,6 +410,8 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 <h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
 <h2>Drawdown</h2><div class='chart'><img src='data:image/png;base64,{dd_b64}' /></div>
 <h2>Annual Returns</h2>{annual_html}
+<h2>Rolling 5Y CAGR Analysis</h2><div class='chart'><img src='data:image/png;base64,{rolling_b64}' /></div>
+{rolling_summary_html}
 <h2>Weight Allocation</h2>{weights_html}
 <h2>Methodology</h2>
 <ul>
