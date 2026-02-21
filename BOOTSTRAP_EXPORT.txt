@@ -1,4 +1,5 @@
 --- SYSTEM.md ---
+
 # SYSTEM.md
 
 ## Purpose of Agent Lab
@@ -68,6 +69,7 @@ MS must refuse invariant changes unless the override phrase is explicitly presen
 
 
 --- CONTEXT_BOOTSTRAP.md ---
+
 # CONTEXT_BOOTSTRAP.md
 
 ## Architecture version
@@ -102,6 +104,7 @@ MS must refuse invariant changes unless the override phrase is explicitly presen
 
 
 --- system_config.yaml ---
+
 architecture_version: "1.0"
 publication:
   reports_dir: "reports/"
