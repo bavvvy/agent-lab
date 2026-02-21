@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -74,7 +75,7 @@ def main() -> int:
         print(f"Unsupported strategy: {args.strategy}. Supported: beta_engine_60_40")
         return 2
 
-    subprocess.check_call([sys.executable, "backtest.py"], cwd=str(workspace), env={**dict(), **__import__('os').environ, "PYTHONPATH": "."})
+    subprocess.check_call([sys.executable, "backtest.py"], cwd=str(workspace), env={**os.environ, "PYTHONPATH": "."})
 
     regenerate_index(repo_root)
 
