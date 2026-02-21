@@ -47,6 +47,17 @@ Protected / handle with care:
 - `.git/`
 - `archive/`
 
+## Non-negotiable invariants
+- Publication must maintain HEAD parity (`git rev-parse HEAD` == `git rev-parse origin/main`) after push.
+- Published versioned reports must follow `YYYY-MM-DD_HH-MM_<strategy>.html`.
+- Dashboard ordering/published timestamp must derive from filename timestamp prefix (UTC), not git commit date.
+- `scientist-workspace/publish.py` remains the sole publication mechanism.
+
+Invariant-change override phrase (required verbatim):
+`OVERRIDE_INVARIANTS: I ACCEPT RISK`
+
+MS must refuse invariant changes unless the override phrase is explicitly present in the request.
+
 ## High-level evolution roadmap
 1. Add multi-strategy support in `publish.py` with explicit strategy registry.
 2. Add deterministic data adapters (local snapshots) for non-synthetic backtests.

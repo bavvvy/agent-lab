@@ -7,6 +7,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from policy import enforce_head_parity, ensure_timestamped_report_name, report_rows_for_index
+
 
 def run(cmd: list[str], cwd: Path) -> str:
     return subprocess.check_output(cmd, cwd=str(cwd), text=True).strip()
@@ -16,21 +18,7 @@ def regenerate_index(repo_root: Path) -> None:
     reports = repo_root / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     files = sorted([p for p in reports.glob("*.html") if p.name != "index.html"])
-    rows = []
-    for p in files:
-        name = p.name
-        parsed_dt = None
-        published = "Legacy"
-        try:
-            prefix = "_".join(name.split("_")[:2])
-            parsed_dt = datetime.strptime(prefix, "%Y-%m-%d_%H-%M").replace(tzinfo=timezone.utc)
-            published = parsed_dt.strftime("%Y-%m-%d %H:%M UTC")
-        except Exception:
-            parsed_dt = None
-            published = "Legacy"
-        sort_key = parsed_dt.timestamp() if parsed_dt else float("-inf")
-        rows.append((name, p.stem, sort_key, published))
-    rows.sort(key=lambda x: x[2], reverse=True)
+    rows = report_rows_for_index(files)
     count = len(rows)
 
     body = []
@@ -59,7 +47,7 @@ def regenerate_index(repo_root: Path) -> None:
 </head>
 <body>
   <h1>MS Report Dashboard</h1>
-  <p>Reports sorted by latest git commit timestamp (UTC), newest first.</p>
+  <p>Reports sorted by filename timestamp (UTC), newest first. Legacy files are listed last.</p>
   <table>
     <thead><tr><th>#</th><th>Report Name</th><th>Published (UTC)</th><th>Link</th></tr></thead>
     <tbody>{tbody}</tbody>
@@ -68,6 +56,18 @@ def regenerate_index(repo_root: Path) -> None:
 </html>
 """
     (reports / "index.html").write_text(html, encoding="utf-8")
+
+
+def run_pytest(workspace: Path) -> None:
+    env = {**os.environ, "PYTHONPATH": "."}
+    rc = subprocess.call([sys.executable, "-m", "pytest", "-q"], cwd=str(workspace), env=env)
+    if rc == 0:
+        return
+    venv_py = workspace / ".venv" / "bin" / "python"
+    if venv_py.exists():
+        rc = subprocess.call([str(venv_py), "-m", "pytest", "-q"], cwd=str(workspace), env=env)
+    if rc != 0:
+        raise RuntimeError("Invariant failed: pytest checks must pass before push")
 
 
 def main() -> int:
@@ -80,12 +80,8 @@ def main() -> int:
 
     strategy_raw = args.strategy
     strategy = strategy_raw.replace("-", "_")
-
-    # Current engine/backtest supports one deterministic strategy path.
     if strategy != "beta_engine_60_40":
-        print(
-            f"Unsupported strategy: {strategy_raw}. Supported: beta_engine_60_40, beta-engine-60-40"
-        )
+        print(f"Unsupported strategy: {strategy_raw}. Supported: beta_engine_60_40, beta-engine-60-40")
         return 2
 
     subprocess.check_call([sys.executable, "backtest.py"], cwd=str(workspace), env={**os.environ, "PYTHONPATH": "."})
@@ -94,22 +90,24 @@ def main() -> int:
     reports_dir = repo_root / "reports"
     dashboard_path = reports_dir / f"{strategy_slug}.html"
     ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
-    versioned_path = reports_dir / f"{ts_utc}_{strategy_slug}.html"
+    versioned_name = f"{ts_utc}_{strategy_slug}.html"
+    ensure_timestamped_report_name(versioned_name, strategy_slug)
+    versioned_path = reports_dir / versioned_name
     versioned_path.write_text(dashboard_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     regenerate_index(repo_root)
-
     run(["git", "add", "-A"], repo_root)
+
     has_staged = subprocess.call(["git", "diff", "--cached", "--quiet"], cwd=str(repo_root)) != 0
     if has_staged:
+        run_pytest(workspace)
         run(["git", "commit", "-m", f"Publish {strategy} report"], repo_root)
         run(["git", "push", "origin", "main"], repo_root)
 
-    local = run(["git", "rev-parse", "HEAD"], repo_root)
-    remote = run(["git", "ls-remote", "--heads", "origin", "main"], repo_root).split()[0]
+    local, remote = enforce_head_parity(repo_root)
     print(f"HEAD_LOCAL: {local}")
     print(f"HEAD_REMOTE: {remote}")
-    print(f"HEAD_MATCH: {str(local == remote).lower()}")
+    print("HEAD_MATCH: true")
     print("https://bavvvy.github.io/agent-lab/reports/")
     return 0
 
