@@ -252,10 +252,13 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
 
     annual_df = annual_returns.rename("annual_return").to_frame().reset_index()
     annual_df["annual_return"] = annual_df["annual_return"].map(lambda x: f"{x:.2%}")
+    def _fmt_pct(x: float) -> str:
+        return f"{float(x) * 100:.2f}%"
+
     weights_fmt = weights_df.copy()
     for col in tickers:
         if col in weights_fmt.columns:
-            weights_fmt[col] = weights_fmt[col].map(lambda x: f"{float(x):.2%}")
+            weights_fmt[col] = weights_fmt[col].map(_fmt_pct)
 
     def table_html(df_in: pd.DataFrame, numeric_cols: set[str]) -> str:
         cols = list(df_in.columns)
@@ -278,7 +281,7 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     cfg_rebalancer = raw_config.get("rebalancer", {})
     cfg_constraints = raw_config.get("constraints", {})
     weights_items = "".join(
-        f"<li><span>{html.escape(str(k))}</span><span class='num'>{float(v):.2%}</span></li>"
+        f"<li><span>{html.escape(str(k))}</span><span class='num'>{_fmt_pct(float(v))}</span></li>"
         for k, v in sorted(portfolio["tickers"].items())
     )
 
