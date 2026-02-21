@@ -102,7 +102,7 @@ def main() -> int:
 
     summary_html = pd.DataFrame(summary_rows).to_html(index=False)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
-    out_path = reports_dir / f"comparison_{ts}.html"
+    out_path = reports_dir / f"{ts}_comparison.html"
     out_path.write_text(
         f"""<html><head><meta charset='utf-8'><title>Comparison Report</title>
 <style>body{{font-family:Arial,sans-serif;max-width:1100px;margin:28px auto;padding:0 16px}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #ddd;padding:8px}}th{{background:#f3f4f6}}img{{width:100%;height:auto;border:1px solid #ddd;border-radius:8px}}</style>
