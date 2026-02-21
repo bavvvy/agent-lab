@@ -79,12 +79,24 @@ def main() -> int:
     repo_root = workspace.parent
 
     strategy_raw = args.strategy
-    strategy = strategy_raw.replace("-", "_")
-    if strategy != "beta_engine_60_40":
-        print(f"Unsupported strategy: {strategy_raw}. Supported: beta_engine_60_40, beta-engine-60-40")
+    normalized = strategy_raw.replace("-", "_")
+    aliases = {
+        "beta_engine_60_40": "beta_engine_60_40",
+        "beta_60_40": "beta_engine_60_40",
+        "sandbox": "sandbox",
+    }
+    strategy = aliases.get(normalized)
+    if strategy is None:
+        print("Unsupported strategy: " + strategy_raw + ". Supported: beta_engine_60_40, beta_60_40, beta-engine-60-40, sandbox")
         return 2
+    if strategy == "sandbox":
+        raise RuntimeError("Sandbox cannot be published.")
 
-    subprocess.check_call([sys.executable, "backtest.py"], cwd=str(workspace), env={**os.environ, "PYTHONPATH": "."})
+    subprocess.check_call(
+        [sys.executable, "backtest.py", "--strategy", strategy],
+        cwd=str(workspace),
+        env={**os.environ, "PYTHONPATH": "."},
+    )
 
     strategy_slug = strategy.replace("_", "-")
     reports_dir = repo_root / "reports"

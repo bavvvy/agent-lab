@@ -21,7 +21,8 @@ import yaml
 from portfolio_engine.engine import PortfolioEngine
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "prices_master.parquet"
-REQUIRED_COLUMNS = ["SPY", "AGG"]
+PORTFOLIO_DIR = Path(__file__).resolve().parent / "portfolios"
+SYMBOL_MAP = {"AGG": "TLT"}
 
 
 def ann_std(xs: pd.Series) -> float:
@@ -44,14 +45,65 @@ def git_cmd(args: list[str]) -> str:
     return subprocess.check_output(args, text=True).strip()
 
 
-def _load_validated_prices() -> tuple[pd.DataFrame, dict[str, str | int]]:
+def _to_engine_symbol(ticker: str) -> str:
+    return SYMBOL_MAP.get(ticker, ticker)
+
+
+def _to_portfolio_symbol(symbol: str) -> str:
+    for k, v in SYMBOL_MAP.items():
+        if v == symbol:
+            return k
+    return symbol
+
+
+def _load_portfolio(strategy: str) -> tuple[dict, Path]:
+    candidate_names = [strategy, strategy.replace("-", "_")]
+    path = None
+    for n in candidate_names:
+        p = PORTFOLIO_DIR / f"{n}.yaml"
+        if p.exists():
+            path = p
+            break
+
+    if path is None:
+        # Fallback: resolve by internal portfolio `name` field.
+        for p in sorted(PORTFOLIO_DIR.glob("*.yaml")):
+            payload = yaml.safe_load(p.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                nm = str(payload.get("name", "")).replace("-", "_")
+                if nm == strategy.replace("-", "_"):
+                    path = p
+                    break
+
+    if path is None:
+        raise FileNotFoundError(f"Portfolio YAML not found for strategy '{strategy}'")
+
+    portfolio = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(portfolio, dict):
+        raise ValueError("Portfolio file must define a mapping")
+
+    if "name" not in portfolio or "tickers" not in portfolio or "rebalance" not in portfolio:
+        raise ValueError("Portfolio YAML requires: name, tickers, rebalance")
+
+    tickers = portfolio["tickers"]
+    if not isinstance(tickers, dict) or not tickers:
+        raise ValueError("tickers must be a non-empty mapping")
+
+    total = float(sum(float(v) for v in tickers.values()))
+    if abs(total - 1.0) > 1e-9:
+        raise ValueError(f"Portfolio weights must sum to 1.0 (got {total})")
+
+    portfolio["tickers"] = {str(k): float(v) for k, v in tickers.items()}
+    return portfolio, path
+
+
+def _load_validated_prices(required_columns: list[str]) -> tuple[pd.DataFrame, dict[str, str | int]]:
     if not DATA_PATH.exists():
         raise FileNotFoundError("prices_master.parquet not found. Run data/update_prices.py first.")
 
     df = pd.read_parquet(DATA_PATH)
-
-    if not set(REQUIRED_COLUMNS).issubset(df.columns):
-        raise ValueError(f"Dataset missing required columns. Expected: {REQUIRED_COLUMNS}")
+    if not set(required_columns).issubset(df.columns):
+        raise ValueError(f"Dataset missing required columns. Expected: {required_columns}")
 
     if not isinstance(df.index, pd.DatetimeIndex):
         if "date" in df.columns:
@@ -70,10 +122,10 @@ def _load_validated_prices() -> tuple[pd.DataFrame, dict[str, str | int]]:
         "RAW_ROWS": int(len(df)),
     }
 
-    required = df[REQUIRED_COLUMNS].copy()
+    required = df[required_columns].copy()
     effective = required.dropna()
     if effective.empty:
-        raise ValueError(f"Dataset contains no complete rows for required columns: {REQUIRED_COLUMNS}")
+        raise ValueError(f"Dataset contains no complete rows for required columns: {required_columns}")
 
     effective_stats = {
         "EFFECTIVE_START": str(effective.index.min().date()),
@@ -81,15 +133,10 @@ def _load_validated_prices() -> tuple[pd.DataFrame, dict[str, str | int]]:
         "EFFECTIVE_ROWS": int(len(effective)),
     }
 
-    if not effective.index.is_monotonic_increasing:
-        raise ValueError("Dataset index must be sorted ascending")
-
-    # Enforce no NaNs inside effective window.
     in_window = required.loc[effective.index.min() : effective.index.max()]
     if in_window.isna().any().any():
         raise ValueError("Required tickers contain NaNs inside effective analysis window")
 
-    # Informational note for pre-effective NaNs (e.g., ETF inception mismatch).
     pre_window = required.loc[required.index < effective.index.min()]
     if not pre_window.empty and pre_window.isna().any().any():
         print("INFO: NaNs detected before EFFECTIVE_START (likely ETF inception alignment).")
@@ -97,45 +144,50 @@ def _load_validated_prices() -> tuple[pd.DataFrame, dict[str, str | int]]:
     return effective, {**raw_stats, **effective_stats}
 
 
-def run_backtest(publish: bool = False) -> None:
+def run_backtest(strategy: str, publish: bool = False) -> None:
     with open("config.yaml", "r", encoding="utf-8") as f:
         raw_config = yaml.safe_load(f)
     engine = PortfolioEngine.from_yaml("config.yaml")
 
-    strategy_name = str(
-        raw_config.get("strategy", {}).get("name")
-        or getattr(engine.config.allocation_model, "type", "strategy")
-    )
+    portfolio, portfolio_path = _load_portfolio(strategy)
+    strategy_name = str(portfolio["name"])
     strategy_slug = strategy_name.replace("_", "-").lower()
+    tickers = list(portfolio["tickers"].keys())
 
-    prices_daily, stats = _load_validated_prices()
+    engine_weights = {_to_engine_symbol(k): float(v) for k, v in portfolio["tickers"].items()}
+    engine.config.allocation_model.params["weights"] = engine_weights
+
+    prices_daily, stats = _load_validated_prices(tickers)
     print(f"RAW_START: {stats['RAW_START']}")
     print(f"RAW_END: {stats['RAW_END']}")
     print(f"RAW_ROWS: {stats['RAW_ROWS']}")
     print(f"EFFECTIVE_START: {stats['EFFECTIVE_START']}")
     print(f"EFFECTIVE_END: {stats['EFFECTIVE_END']}")
     print(f"EFFECTIVE_ROWS: {stats['EFFECTIVE_ROWS']}")
-    print(f"DATASET_TICKERS: {', '.join(REQUIRED_COLUMNS)}")
+    print(f"DATASET_TICKERS: {', '.join(tickers)}")
 
     prices = prices_daily.groupby(prices_daily.index.to_period("M")).tail(1).copy()
-    prices = prices.rename(columns={"AGG": "TLT"})
 
     start_date = prices.index.min().date()
     end_date = prices.index.max().date()
     initial_capital = 10000.0
     transaction_cost_bps = 0
     slippage_bps = 0
-    rebalance_rule = "monthly month-change via engine rebalancer"
+    rebalance_rule = str(portfolio.get("rebalance", "monthly"))
 
-    cash, positions, last_reb = initial_capital, {"SPY": 0.0, "TLT": 0.0}, None
+    engine_symbols = [_to_engine_symbol(t) for t in tickers]
+    cash, positions, last_reb = initial_capital, {s: 0.0 for s in engine_symbols}, None
     equity, weight_rows, turnover_rows = [], [], []
 
     for dt, row in prices.iterrows():
         as_of = dt.date()
-        px = {"SPY": float(row["SPY"]), "TLT": float(row["TLT"])}
+        px = {_to_engine_symbol(t): float(row[t]) for t in tickers}
         pv = cash + sum(positions[s] * px[s] for s in positions)
         out = engine.run(as_of, px, pv, positions, last_reb)
-        weight_rows.append({"date": as_of.isoformat(), **out["weights"]})
+
+        display_weights = {_to_portfolio_symbol(k): v for k, v in out["weights"].items()}
+        weight_rows.append({"date": as_of.isoformat(), **display_weights})
+
         if out["should_rebalance"]:
             turnover_notional = sum(abs(du) * px[s] for s, du in out["trades"].items())
             turnover_rows.append(turnover_notional / pv if pv > 0 else 0.0)
@@ -162,11 +214,7 @@ def run_backtest(publish: bool = False) -> None:
     pct_pos = float((monthly["ret"] > 0).mean()) if len(monthly) else 0.0
     turnover = float(sum(turnover_rows)) if turnover_rows else 0.0
 
-    annual_returns = (
-        monthly.assign(year=monthly["date"].dt.year)
-        .groupby("year")["ret"]
-        .apply(lambda x: (1 + x).prod() - 1)
-    )
+    annual_returns = monthly.assign(year=monthly["date"].dt.year).groupby("year")["ret"].apply(lambda x: (1 + x).prod() - 1)
     weights_df = pd.DataFrame(weight_rows)
 
     fig1 = plt.figure(figsize=(9, 4))
@@ -205,39 +253,33 @@ def run_backtest(publish: bool = False) -> None:
     annual_df = annual_returns.rename("annual_return").to_frame().reset_index()
     annual_df["annual_return"] = annual_df["annual_return"].map(lambda x: f"{x:.2%}")
     weights_fmt = weights_df.copy()
-    for col in ["SPY", "TLT"]:
+    for col in tickers:
         if col in weights_fmt.columns:
             weights_fmt[col] = weights_fmt[col].map(lambda x: f"{float(x):.2%}")
 
     def table_html(df_in: pd.DataFrame, numeric_cols: set[str]) -> str:
         cols = list(df_in.columns)
-        thead = "".join(
-            f"<th{' class=\"num\"' if c in numeric_cols else ''}>{html.escape(str(c))}</th>"
-            for c in cols
-        )
+        thead = "".join(f"<th{' class=\"num\"' if c in numeric_cols else ''}>{html.escape(str(c))}</th>" for c in cols)
         body_rows = []
-        for _, row in df_in.iterrows():
+        for _, rw in df_in.iterrows():
             tds = []
             for c in cols:
                 cls = " class=\"num\"" if c in numeric_cols else ""
-                tds.append(f"<td{cls}>{html.escape(str(row[c]))}</td>")
+                tds.append(f"<td{cls}>{html.escape(str(rw[c]))}</td>")
             body_rows.append("<tr>" + "".join(tds) + "</tr>")
         return f"<table><thead><tr>{thead}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
 
     metrics_html = table_html(metrics, {"Value"})
     annual_html = table_html(annual_df, {"annual_return"})
-    weights_html = table_html(weights_fmt, {"SPY", "TLT"})
+    weights_html = table_html(weights_fmt, set(tickers))
 
     cfg_engine = raw_config.get("engine", {})
-    cfg_strategy = raw_config.get("strategy", {})
-    cfg_weights = cfg_strategy.get("weights", {})
     cfg_overlays = raw_config.get("overlays", {})
     cfg_rebalancer = raw_config.get("rebalancer", {})
     cfg_constraints = raw_config.get("constraints", {})
-
     weights_items = "".join(
         f"<li><span>{html.escape(str(k))}</span><span class='num'>{float(v):.2%}</span></li>"
-        for k, v in sorted(cfg_weights.items())
+        for k, v in sorted(portfolio["tickers"].items())
     )
 
     config_snapshot_html = f"""
@@ -247,7 +289,8 @@ def run_backtest(publish: bool = False) -> None:
     <li><span>Version</span><span>{html.escape(str(cfg_engine.get('version', '')))}</span></li>
   </ul></div>
   <div class='cfg-card'><h3>Strategy</h3><ul>
-    <li><span>Name</span><span>{html.escape(str(cfg_strategy.get('name', '')))}</span></li>
+    <li><span>Name</span><span>{html.escape(strategy_name)}</span></li>
+    <li><span>Portfolio File</span><span>{html.escape(portfolio_path.name)}</span></li>
   </ul><h4>Weights</h4><ul>{weights_items}</ul></div>
   <div class='cfg-card'><h3>Overlays</h3><ul>
     <li><span>Risk</span><span>{html.escape(str(cfg_overlays.get('risk', '')))}</span></li>
@@ -288,7 +331,7 @@ def run_backtest(publish: bool = False) -> None:
 </style>
 </head><body><div class='container'>
 <h1>Strategy Report: {html.escape(strategy_name)}</h1>
-<div class='subhead'><b>Tickers:</b> SPY, AGG<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:,.2f}</div>
+<div class='subhead'><b>Tickers:</b> {', '.join(tickers)}<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:,.2f}</div>
 <h2>Config Snapshot</h2>{config_snapshot_html}
 <h2>Summary Metrics</h2>{metrics_html}
 <h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
@@ -307,7 +350,7 @@ def run_backtest(publish: bool = False) -> None:
 """
     report_path.write_text(html_report, encoding="utf-8")
 
-    print(f"CONFIG: config.yaml (strategy={strategy_name})")
+    print(f"CONFIG: {portfolio_path}")
     print(f"DATE_RANGE: {start_date.isoformat()} to {end_date.isoformat()}")
     print(
         f"METRICS: total_return={total_return:.6f}, cagr={cagr:.6f}, vol={vol:.6f}, "
@@ -335,6 +378,7 @@ def run_backtest(publish: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--strategy", required=True)
     parser.add_argument("--publish", action="store_true")
     args = parser.parse_args()
-    run_backtest(publish=args.publish)
+    run_backtest(strategy=args.strategy, publish=args.publish)
