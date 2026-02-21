@@ -181,6 +181,40 @@ def run_backtest(publish: bool = False) -> None:
     annual_html = table_html(annual_df, {"annual_return"})
     weights_html = table_html(weights_fmt, {"SPY", "TLT"})
 
+    cfg_engine = raw_config.get("engine", {})
+    cfg_strategy = raw_config.get("strategy", {})
+    cfg_weights = cfg_strategy.get("weights", {})
+    cfg_overlays = raw_config.get("overlays", {})
+    cfg_rebalancer = raw_config.get("rebalancer", {})
+    cfg_constraints = raw_config.get("constraints", {})
+
+    weights_items = "".join(
+        f"<li><span>{html.escape(str(k))}</span><span class='num'>{float(v):.2%}</span></li>"
+        for k, v in sorted(cfg_weights.items())
+    )
+
+    config_snapshot_html = f"""
+<div class='config-grid'>
+  <div class='cfg-card'><h3>Engine</h3><ul>
+    <li><span>Name</span><span>{html.escape(str(cfg_engine.get('name', '')))}</span></li>
+    <li><span>Version</span><span>{html.escape(str(cfg_engine.get('version', '')))}</span></li>
+  </ul></div>
+  <div class='cfg-card'><h3>Strategy</h3><ul>
+    <li><span>Name</span><span>{html.escape(str(cfg_strategy.get('name', '')))}</span></li>
+  </ul><h4>Weights</h4><ul>{weights_items}</ul></div>
+  <div class='cfg-card'><h3>Overlays</h3><ul>
+    <li><span>Risk</span><span>{html.escape(str(cfg_overlays.get('risk', '')))}</span></li>
+    <li><span>Regime</span><span>{html.escape(str(cfg_overlays.get('regime', '')))}</span></li>
+  </ul></div>
+  <div class='cfg-card'><h3>Rebalancer</h3><ul>
+    <li><span>Type</span><span>{html.escape(str(cfg_rebalancer.get('type', '')))}</span></li>
+  </ul></div>
+  <div class='cfg-card'><h3>Constraints</h3><ul>
+    <li><span>Leverage</span><span>{html.escape(str(cfg_constraints.get('leverage', '')))}</span></li>
+  </ul></div>
+</div>
+"""
+
     html_report = f"""
 <html><head><meta charset='utf-8'><title>Strategy Report</title>
 <style>
@@ -195,14 +229,20 @@ def run_backtest(publish: bool = False) -> None:
   th, td {{ border:1px solid var(--line); padding:8px 10px; }}
   th {{ background:var(--head); text-align:left; font-weight:600; }}
   td.num, th.num {{ text-align:right; font-variant-numeric:tabular-nums; }}
-  pre {{ background:var(--code); border:1px solid var(--line); border-radius:10px; padding:14px; overflow-x:auto; margin:0; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace; font-size:13px; white-space:pre; }}
   .chart img {{ width:100%; height:auto; border:1px solid var(--line); border-radius:8px; }}
   ul {{ margin:8px 0 0 18px; padding:0; }}
+  .config-grid {{ display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); }}
+  .cfg-card {{ background:var(--code); border:1px solid var(--line); border-radius:10px; padding:12px; }}
+  .cfg-card h3 {{ margin:0 0 8px; font-size:15px; }}
+  .cfg-card h4 {{ margin:10px 0 6px; font-size:13px; color:var(--muted); }}
+  .cfg-card ul {{ list-style:none; margin:0; padding:0; }}
+  .cfg-card li {{ display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed #e6e9ef; }}
+  .cfg-card li:last-child {{ border-bottom:none; }}
 </style>
 </head><body><div class='container'>
 <h1>Strategy Report: {html.escape(strategy_name)}</h1>
 <div class='subhead'><b>Tickers:</b> SPY, TLT<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:,.2f}</div>
-<h2>Config Snapshot</h2><pre>{html.escape(json.dumps(raw_config, indent=2))}</pre>
+<h2>Config Snapshot</h2>{config_snapshot_html}
 <h2>Summary Metrics</h2>{metrics_html}
 <h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
 <h2>Drawdown</h2><div class='chart'><img src='data:image/png;base64,{dd_b64}' /></div>
