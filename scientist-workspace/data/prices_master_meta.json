@@ -1,0 +1,12 @@
+{
+  "last_update_utc": "2026-02-21T01:19:46+00:00",
+  "tickers": [
+    "SPY",
+    "AGG"
+  ],
+  "start_date": "2000-01-03",
+  "end_date": "2026-02-20",
+  "row_count": 6573,
+  "source": "yfinance",
+  "auto_adjust_flag": true
+}
