@@ -266,6 +266,12 @@ def main() -> int:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
     out_path = reports_dir / f"{ts}_comparison.html"
 
+    archive_dir = reports_dir / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for existing in sorted(reports_dir.glob("*_comparison.html")):
+        if existing.name != out_path.name:
+            shutil.move(str(existing), str(archive_dir / existing.name))
+
     html_doc = f"""<html><head><meta charset='utf-8'><title>Comparison Report</title>
 <style>body{{font-family:Arial,sans-serif;max-width:1100px;margin:28px auto;padding:0 16px}}table{{border-collapse:collapse;width:100%;margin:10px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:left}}th{{background:#f3f4f6}}td.num{{text-align:right}}img{{width:100%;height:auto;border:1px solid #ddd;border-radius:8px}}</style>
 </head><body>
