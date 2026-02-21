@@ -8,7 +8,7 @@ import pandas as pd
 import yfinance as yf
 from pandas.tseries.offsets import BDay
 
-TICKERS = ["SPY", "AGG"]
+TICKERS = ["SPY", "AGG", "TLT", "TIP", "GLD", "DBC"]
 SOURCE = "yfinance"
 AUTO_ADJUST = True
 START_DATE = pd.Timestamp("2000-01-01")
@@ -91,10 +91,17 @@ def main() -> None:
         print("[INFO] No existing dataset found. Performing full download.")
         merged = _download_prices(START_DATE, today)
     else:
-        last_date = pd.Timestamp(existing.index.max())
-        fetch_start = (last_date - BDay(7)).normalize()
-        if fetch_start < START_DATE:
+        existing = existing.reindex(columns=TICKERS)
+        needs_full_backfill = any(existing[t].isna().all() for t in TICKERS)
+
+        if needs_full_backfill:
+            print("[INFO] Detected newly introduced ticker columns with no history. Running full backfill.")
             fetch_start = START_DATE
+        else:
+            last_date = pd.Timestamp(existing.index.max())
+            fetch_start = (last_date - BDay(7)).normalize()
+            if fetch_start < START_DATE:
+                fetch_start = START_DATE
 
         new_data = _download_prices(fetch_start, today)
 
