@@ -4,10 +4,9 @@ import argparse
 import base64
 import html
 import io
-import json
 import math
 import subprocess
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
@@ -21,17 +20,8 @@ import yaml
 
 from portfolio_engine.engine import PortfolioEngine
 
-
-def month_ends(start_year: int, start_month: int, periods: int) -> list[date]:
-    y, m = start_year, start_month
-    out = []
-    for _ in range(periods):
-        out.append(date(y, m, 28))
-        m += 1
-        if m > 12:
-            y += 1
-            m = 1
-    return out
+DATA_PATH = Path(__file__).resolve().parent / "data" / "prices_master.parquet"
+REQUIRED_COLUMNS = ["SPY", "AGG"]
 
 
 def ann_std(xs: pd.Series) -> float:
@@ -54,6 +44,40 @@ def git_cmd(args: list[str]) -> str:
     return subprocess.check_output(args, text=True).strip()
 
 
+def _load_validated_prices() -> pd.DataFrame:
+    if not DATA_PATH.exists():
+        raise FileNotFoundError("prices_master.parquet not found. Run data/update_prices.py first.")
+
+    df = pd.read_parquet(DATA_PATH)
+
+    if not set(REQUIRED_COLUMNS).issubset(df.columns):
+        raise ValueError(f"Dataset missing required columns. Expected: {REQUIRED_COLUMNS}")
+
+    if not isinstance(df.index, pd.DatetimeIndex):
+        if "date" in df.columns:
+            df = df.set_index("date")
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise ValueError("Dataset index must be DatetimeIndex")
+
+    df.index = pd.to_datetime(df.index)
+    if df.index.tz is not None:
+        df.index = df.index.tz_convert(None)
+
+    df = df.sort_index()
+
+    # Use only fully populated rows for required instruments.
+    df = df.dropna(subset=REQUIRED_COLUMNS)
+    if df.empty:
+        raise ValueError(f"Dataset contains no complete rows for required columns: {REQUIRED_COLUMNS}")
+    if df[REQUIRED_COLUMNS].isna().any().any():
+        raise ValueError(f"Dataset contains missing values in required columns: {REQUIRED_COLUMNS}")
+
+    if not df.index.is_monotonic_increasing:
+        raise ValueError("Dataset index must be sorted ascending")
+
+    return df[REQUIRED_COLUMNS].copy()
+
+
 def run_backtest(publish: bool = False) -> None:
     with open("config.yaml", "r", encoding="utf-8") as f:
         raw_config = yaml.safe_load(f)
@@ -65,40 +89,41 @@ def run_backtest(publish: bool = False) -> None:
     )
     strategy_slug = strategy_name.replace("_", "-").lower()
 
-    dates = month_ends(2024, 1, 24)
-    start_date, end_date = dates[0], dates[-1]
+    prices_daily = _load_validated_prices()
+    print(f"DATASET_START: {prices_daily.index.min().date()}")
+    print(f"DATASET_END: {prices_daily.index.max().date()}")
+    print(f"DATASET_ROWS: {len(prices_daily)}")
+    print(f"DATASET_TICKERS: {', '.join(REQUIRED_COLUMNS)}")
+
+    prices = prices_daily.groupby(prices_daily.index.to_period("M")).tail(1).copy()
+    prices = prices.rename(columns={"AGG": "TLT"})
+
+    start_date = prices.index.min().date()
+    end_date = prices.index.max().date()
     initial_capital = 10000.0
     transaction_cost_bps = 0
     slippage_bps = 0
     rebalance_rule = "monthly month-change via engine rebalancer"
 
-    prices = pd.DataFrame(
-        {
-            "date": pd.to_datetime(dates),
-            "SPY": [float(480 + i * 3 + (i % 4) * 2) for i in range(len(dates))],
-            "TLT": [float(95 + (i % 6) - i * 0.2) for i in range(len(dates))],
-        }
-    )
-
     cash, positions, last_reb = initial_capital, {"SPY": 0.0, "TLT": 0.0}, None
     equity, weight_rows, turnover_rows = [], [], []
 
-    for _, r in prices.iterrows():
-        dt = r["date"].date()
-        px = {"SPY": float(r["SPY"]), "TLT": float(r["TLT"])}
+    for dt, row in prices.iterrows():
+        as_of = dt.date()
+        px = {"SPY": float(row["SPY"]), "TLT": float(row["TLT"])}
         pv = cash + sum(positions[s] * px[s] for s in positions)
-        out = engine.run(dt, px, pv, positions, last_reb)
-        weight_rows.append({"date": dt.isoformat(), **out["weights"]})
+        out = engine.run(as_of, px, pv, positions, last_reb)
+        weight_rows.append({"date": as_of.isoformat(), **out["weights"]})
         if out["should_rebalance"]:
             turnover_notional = sum(abs(du) * px[s] for s, du in out["trades"].items())
             turnover_rows.append(turnover_notional / pv if pv > 0 else 0.0)
             for s, du in out["trades"].items():
                 cash -= du * px[s]
                 positions[s] = positions.get(s, 0.0) + du
-            last_reb = dt
+            last_reb = as_of
         equity.append(cash + sum(positions[s] * px[s] for s in positions))
 
-    df = pd.DataFrame({"date": prices["date"], "equity": equity})
+    df = pd.DataFrame({"date": prices.index, "equity": equity})
     df["ret"] = df["equity"].pct_change().fillna(0.0)
     monthly = df.iloc[1:].copy()
 
@@ -241,7 +266,7 @@ def run_backtest(publish: bool = False) -> None:
 </style>
 </head><body><div class='container'>
 <h1>Strategy Report: {html.escape(strategy_name)}</h1>
-<div class='subhead'><b>Tickers:</b> SPY, TLT<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:,.2f}</div>
+<div class='subhead'><b>Tickers:</b> SPY, AGG<br><b>Date range:</b> {start_date.isoformat()} to {end_date.isoformat()}<br><b>Rebalance rule:</b> {html.escape(rebalance_rule)}<br><b>Transaction cost assumption:</b> {transaction_cost_bps} bps (slippage {slippage_bps} bps)<br><b>Initial capital:</b> {initial_capital:,.2f}</div>
 <h2>Config Snapshot</h2>{config_snapshot_html}
 <h2>Summary Metrics</h2>{metrics_html}
 <h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
@@ -252,7 +277,7 @@ def run_backtest(publish: bool = False) -> None:
 <ul>
 <li>Asset returns: simple close-to-close returns, P_t / P_{{t-1}} - 1.</li>
 <li>Rebalancing: engine produces target holdings monthly; trades executed on rebalance months only.</li>
-<li>Data: deterministic synthetic monthly prices generated in this script (no external feed).</li>
+<li>Data source: local canonical dataset from `data/prices_master.parquet` (no network calls).</li>
 <li>Assumptions: no taxes, no transaction costs, no slippage, no leverage/borrow modeling beyond engine behavior.</li>
 </ul>
 </div>
@@ -262,7 +287,10 @@ def run_backtest(publish: bool = False) -> None:
 
     print(f"CONFIG: config.yaml (strategy={strategy_name})")
     print(f"DATE_RANGE: {start_date.isoformat()} to {end_date.isoformat()}")
-    print(f"METRICS: total_return={total_return:.6f}, cagr={cagr:.6f}, vol={vol:.6f}, sharpe={sharpe:.6f}, max_drawdown={mdd:.6f}, turnover={turnover:.6f}")
+    print(
+        f"METRICS: total_return={total_return:.6f}, cagr={cagr:.6f}, vol={vol:.6f}, "
+        f"sharpe={sharpe:.6f}, max_drawdown={mdd:.6f}, turnover={turnover:.6f}"
+    )
     print(f"REPORT_PATH: {report_path}")
 
     if publish:
