@@ -95,7 +95,8 @@ def main() -> int:
         env={**os.environ, "PYTHONPATH": "."},
     )
 
-    strategy_slug = strategy.replace("_", "-")
+    portfolio = __import__("yaml").safe_load(portfolio_path.read_text(encoding="utf-8"))
+    strategy_slug = str(portfolio.get("name", strategy)).replace("_", "-").lower()
     reports_dir = repo_root / "reports"
     dashboard_path = reports_dir / f"{strategy_slug}.html"
     ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
