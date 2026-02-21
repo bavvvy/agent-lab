@@ -76,7 +76,8 @@ def main() -> int:
             plt.plot(d["date"], d["rolling_60m_cagr"], lw=2, label=name)
     plt.title("Rolling 5Y CAGR Comparison")
     plt.grid(alpha=0.3)
-    plt.legend()
+    if plt.gca().lines:
+        plt.legend()
     cagr_b64 = fig_to_base64(fig1)
 
     fig2 = plt.figure(figsize=(10, 4))
@@ -86,7 +87,8 @@ def main() -> int:
             plt.plot(z["date"], z["rolling_36m_sharpe"], lw=2, label=name)
     plt.title("Rolling 3Y Sharpe Comparison (rf=0)")
     plt.grid(alpha=0.3)
-    plt.legend()
+    if plt.gca().lines:
+        plt.legend()
     sharpe_b64 = fig_to_base64(fig2)
 
     pair_line = "N/A"
