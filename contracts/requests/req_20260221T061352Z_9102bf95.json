@@ -1,0 +1,22 @@
+{
+  "contract_version": "1.0",
+  "contract_type": "allocation_request",
+  "origin": "node",
+  "request_id": "req_20260221T061352Z_9102bf95",
+  "payload": {
+    "strategy_type": "balanced",
+    "risk_tolerance": "moderate",
+    "leverage_allowed": false,
+    "investment_vehicle": "etf",
+    "base_currency": "AUD",
+    "time_horizon": {
+      "years": 10,
+      "objective": "balanced_growth"
+    },
+    "liquidity_constraints": {
+      "redemption_window": "monthly",
+      "max_lockup_days": 30
+    }
+  },
+  "created_at": "2026-02-21T06:13:52+00:00"
+}

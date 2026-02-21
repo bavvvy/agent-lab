@@ -16,7 +16,7 @@ def run(cmd: list[str], cwd: Path) -> str:
 
 
 def regenerate_index(repo_root: Path) -> None:
-    reports = repo_root / "reports"
+    reports = repo_root / "outputs" / "reports"
     archive = reports / "archive"
     reports.mkdir(parents=True, exist_ok=True)
     archive.mkdir(parents=True, exist_ok=True)
@@ -96,7 +96,7 @@ def main() -> int:
     args = parser.parse_args()
 
     workspace = Path(__file__).resolve().parent
-    repo_root = workspace.parent
+    repo_root = workspace.parent.parent
 
     strategy_raw = args.strategy
     strategy = strategy_raw.replace("-", "_")
@@ -125,7 +125,7 @@ def main() -> int:
 
     portfolio = __import__("yaml").safe_load(portfolio_path.read_text(encoding="utf-8"))
     strategy_slug = str(portfolio.get("name", strategy)).replace("_", "-").lower()
-    reports_dir = repo_root / "reports"
+    reports_dir = repo_root / "outputs" / "reports"
     dashboard_path = reports_dir / f"{strategy_slug}.html"
     ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
     versioned_name = f"{ts_utc}_{strategy_slug}.html"
@@ -153,7 +153,7 @@ def main() -> int:
     print(f"HEAD_LOCAL: {local}")
     print(f"HEAD_REMOTE: {remote}")
     print("HEAD_MATCH: true")
-    print("https://bavvvy.github.io/agent-lab/reports/")
+    print("https://bavvvy.github.io/agent-lab/outputs/reports/")
     return 0
 
 

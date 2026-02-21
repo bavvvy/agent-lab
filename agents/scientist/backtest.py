@@ -334,7 +334,8 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
     cfg_rebalancer = raw_config.get("rebalancer", {})
     cfg_constraints = raw_config.get("constraints", {})
 
-    reports_dir = Path("../reports")
+    repo_root = Path(__file__).resolve().parents[2]
+    reports_dir = repo_root / "outputs" / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_path = reports_dir / f"{strategy_slug}.html"
 

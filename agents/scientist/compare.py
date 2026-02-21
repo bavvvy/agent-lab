@@ -137,7 +137,8 @@ def main() -> int:
         raise ValueError("Provide at least two --strategy values")
 
     workspace = Path(__file__).resolve().parent
-    reports_dir = workspace.parent / "reports"
+    repo_root = workspace.parents[1]
+    reports_dir = repo_root / "outputs" / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     names: list[str] = []
