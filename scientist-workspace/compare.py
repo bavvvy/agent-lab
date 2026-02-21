@@ -8,8 +8,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from bs4 import BeautifulSoup
-
 import backtest as bt
 
 
@@ -24,41 +22,23 @@ def _pct_to_float(x: str) -> float:
     return float(str(x).replace("%", "")) / 100.0
 
 
-def _read_rolling_table(report_path: Path) -> pd.DataFrame:
-    soup = BeautifulSoup(report_path.read_text(encoding="utf-8"), "html.parser")
-    h2 = None
-    for x in soup.find_all("h2"):
-        if x.get_text(strip=True) == "Rolling Metrics (60M window)":
-            h2 = x
-            break
-    if h2 is None:
-        raise ValueError(f"Rolling metrics section not found in report: {report_path}")
-
-    table = h2.find_next("table")
-    if table is None:
-        raise ValueError(f"Rolling metrics table not found in report: {report_path}")
-
-    headers = [th.get_text(strip=True) for th in table.find_all("th")]
-    rows = []
-    for tr in table.find_all("tr")[1:]:
-        tds = [td.get_text(strip=True) for td in tr.find_all("td")]
-        if len(tds) == len(headers):
-            rows.append(dict(zip(headers, tds)))
-
-    out = pd.DataFrame(rows)
+def _read_rolling_table(dataset_path: Path) -> pd.DataFrame:
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Canonical dataset missing: {dataset_path}")
+    out = pd.read_parquet(dataset_path)
     required = {"date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"}
     if not required.issubset(set(out.columns)):
-        raise ValueError(f"Rolling metrics columns missing in report: {report_path}")
-
+        raise ValueError(f"Rolling metrics columns missing in canonical dataset: {dataset_path}")
+    out = out[["date", "rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"] + (["rolling_36m_sharpe"] if "rolling_36m_sharpe" in out.columns else [])].copy()
     out["date"] = pd.to_datetime(out["date"])
-    out["rolling_60m_cagr"] = out["rolling_60m_cagr"].map(_pct_to_float)
-    out["rolling_60m_vol"] = out["rolling_60m_vol"].map(_pct_to_float)
+    out["rolling_60m_cagr"] = pd.to_numeric(out["rolling_60m_cagr"], errors="coerce")
+    out["rolling_60m_vol"] = pd.to_numeric(out["rolling_60m_vol"], errors="coerce")
     out["rolling_60m_sharpe"] = pd.to_numeric(out["rolling_60m_sharpe"], errors="coerce")
     if "rolling_36m_sharpe" in out.columns:
         out["rolling_36m_sharpe"] = pd.to_numeric(out["rolling_36m_sharpe"], errors="coerce")
     else:
         out["rolling_36m_sharpe"] = float("nan")
-    return out
+    return out.dropna(subset=["rolling_60m_cagr", "rolling_60m_vol", "rolling_60m_sharpe"])
 
 
 def main() -> int:
@@ -76,12 +56,8 @@ def main() -> int:
     for s in args.strategy:
         portfolio, _ = bt._load_portfolio(s)
         name = str(portfolio["name"])
-        slug = name.replace("_", "-").lower()
-        report_path = reports_dir / f"{slug}.html"
-        if not report_path.exists():
-            raise FileNotFoundError(f"Strategy report missing: {report_path}. Generate it with backtest.py first.")
-
-        roll = _read_rolling_table(report_path)
+        dataset_path = workspace / "output" / f"{s}.parquet"
+        roll = _read_rolling_table(dataset_path)
         roll_by_name[name] = roll
 
         mean_5y = roll["rolling_60m_cagr"].mean() if not roll.empty else float("nan")

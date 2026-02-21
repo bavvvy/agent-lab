@@ -273,26 +273,6 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
     plt.grid(alpha=0.3)
     dd_b64 = fig_to_base64(fig2)
 
-    fig3 = plt.figure(figsize=(9, 3.8))
-    if not rolling_table.empty:
-        plt.plot(rolling_table["date"], rolling_table["rolling_60m_cagr"], lw=2)
-    plt.title("Rolling 5Y CAGR (60M window)")
-    plt.grid(alpha=0.3)
-    rolling5_b64 = fig_to_base64(fig3)
-
-    fig4 = plt.figure(figsize=(9, 3.8))
-    if not rolling_table.empty:
-        plt.plot(rolling_table["date"], rolling_table["rolling_60m_vol"], lw=2)
-    plt.title("Rolling 5Y Volatility (60M window)")
-    plt.grid(alpha=0.3)
-    rolling_vol_b64 = fig_to_base64(fig4)
-
-    fig5 = plt.figure(figsize=(9, 3.8))
-    if not rolling_table.empty:
-        plt.plot(rolling_table["date"], rolling_table["rolling_60m_sharpe"], lw=2)
-    plt.title("Rolling 5Y Sharpe (rf=0, 60M window)")
-    plt.grid(alpha=0.3)
-    rolling_sharpe_b64 = fig_to_base64(fig5)
 
     metrics = pd.DataFrame(
         [
@@ -466,11 +446,7 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
 <h2>Equity Curve</h2><div class='chart'><img src='data:image/png;base64,{equity_b64}' /></div>
 <h2>Drawdown</h2><div class='chart'><img src='data:image/png;base64,{dd_b64}' /></div>
 <h2>Annual Returns</h2>{annual_html}
-<h2>Rolling 5Y CAGR</h2><div class='chart'><img src='data:image/png;base64,{rolling5_b64}' /></div>
-<h2>Rolling 5Y Volatility</h2><div class='chart'><img src='data:image/png;base64,{rolling_vol_b64}' /></div>
-<h2>Rolling 5Y Sharpe (rf=0)</h2><div class='chart'><img src='data:image/png;base64,{rolling_sharpe_b64}' /></div>
 <h2>Monthly Portfolio Data</h2>{monthly_data_html}
-<h2>Rolling Metrics (60M window)</h2>{rolling_metrics_html}
 <h2>Weight Allocation</h2>{weights_html}
 <h2>Methodology</h2>
 <ul>
