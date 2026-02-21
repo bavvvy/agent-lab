@@ -176,6 +176,7 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     rebalance_rule = str(portfolio.get("rebalance", "monthly"))
 
     engine_symbols = [_to_engine_symbol(t) for t in tickers]
+    engine_to_portfolio = {_to_engine_symbol(t): t for t in tickers}
     cash, positions, last_reb = initial_capital, {s: 0.0 for s in engine_symbols}, None
     equity, weight_rows, turnover_rows = [], [], []
 
@@ -185,7 +186,7 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
         pv = cash + sum(positions[s] * px[s] for s in positions)
         out = engine.run(as_of, px, pv, positions, last_reb)
 
-        display_weights = {_to_portfolio_symbol(k): v for k, v in out["weights"].items()}
+        display_weights = {engine_to_portfolio.get(k, k): v for k, v in out["weights"].items()}
         weight_rows.append({"date": as_of.isoformat(), **display_weights})
 
         if out["should_rebalance"]:
@@ -259,6 +260,14 @@ def run_backtest(strategy: str, publish: bool = False) -> None:
     for col in tickers:
         if col in weights_fmt.columns:
             weights_fmt[col] = weights_fmt[col].map(_fmt_pct)
+
+    for col in tickers:
+        if col in weights_fmt.columns:
+            has_bare_float = weights_fmt[col].map(
+                lambda v: isinstance(v, (int, float)) and 0.0 <= float(v) <= 1.0
+            ).any()
+            if has_bare_float:
+                raise AssertionError(f"Unformatted weight cell detected in column {col}")
 
     def table_html(df_in: pd.DataFrame, numeric_cols: set[str]) -> str:
         cols = list(df_in.columns)
