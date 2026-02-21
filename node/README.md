@@ -15,7 +15,7 @@ It gathers structured portfolio inputs from users and translates them into machi
 
 ## Commands
 
-Run from `scientist-workspace/node/`:
+Run from `agent-lab/node/`:
 
 - `/node gather` → collect missing required fields via clarifying questions
 - `/node package` → emit structured JSON payload for MS

@@ -5,7 +5,10 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from schema import ALLOCATION_REQUEST_SCHEMA, validate_required_fields
+try:
+    from schema import ALLOCATION_REQUEST_SCHEMA, validate_required_fields
+except ModuleNotFoundError:  # package execution path
+    from node.schema import ALLOCATION_REQUEST_SCHEMA, validate_required_fields
 
 
 REQUIRED_ORDER = [
