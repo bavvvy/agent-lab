@@ -83,3 +83,18 @@ If root-level identity files are detected, this constitutes architectural drift 
 - Node agent (`agents/node/`) validates and packages structured requests into contracts.
 - Scientist agent (`agents/scientist/`) executes portfolio analytics and publication workflows.
 - Control-plane (`control/`) defines architecture and invariants without replacing runtime truth.
+
+## Control Commands
+### generate bootstrap
+When the phrase `generate bootstrap` is received, the system must:
+1. Overwrite `./BOOTSTRAP_EXPORT.txt` at repository root.
+2. Insert full unmodified contents of:
+   - `control/SYSTEM.md`
+   - `control/CONTEXT_BOOTSTRAP.md`
+   - `control/system_config.yaml`
+3. Preserve formatting exactly.
+4. Confirm only `BOOTSTRAP_EXPORT.txt` changed.
+5. Commit with message:
+   - `Regenerate portable control-plane bootstrap export`
+6. Push to `origin main`.
+7. Confirm HEAD parity `TRUE`.
