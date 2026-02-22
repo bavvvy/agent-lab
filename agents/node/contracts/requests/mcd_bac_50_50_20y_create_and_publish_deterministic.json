@@ -1,0 +1,32 @@
+{
+  "contract_type": "strategy_execution_request",
+  "intent": "Create a new portfolio with a 50/50 split between McDonald's (MCD) and Bank of America (BAC) over the past 20 years, and prepare deterministic create-and-publish deliverables.",
+  "new_strategy": "mcd_bac_50_50_20y",
+  "assets": {
+    "MCD": 0.50,
+    "BAC": 0.50
+  },
+  "lookback_period": "20_years",
+  "action": "create_and_publish",
+  "mode": "deterministic",
+  "execution": {
+    "execute": false,
+    "publish": false,
+    "call_scientist": false
+  },
+  "constraints": {
+    "do_not_modify": [
+      "agents/",
+      "outputs/",
+      "control/"
+    ],
+    "do_not_create": [
+      "yaml"
+    ]
+  },
+  "deliverables": [
+    "strategy_definition",
+    "publish_report"
+  ],
+  "status": "contract_only"
+}
