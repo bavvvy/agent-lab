@@ -1,4 +1,4 @@
---- SYSTEM.md ---
+--- control/SYSTEM.md ---
 
 # SYSTEM.md
 
@@ -68,7 +68,7 @@ MS must refuse invariant changes unless the override phrase is explicitly presen
 5. Introduce strict config/version contracts across backtest and publish layers.
 
 
---- CONTEXT_BOOTSTRAP.md ---
+--- control/CONTEXT_BOOTSTRAP.md ---
 
 # CONTEXT_BOOTSTRAP.md
 
@@ -103,7 +103,7 @@ MS must refuse invariant changes unless the override phrase is explicitly presen
 5. Validate local run before commit/push.
 
 
---- system_config.yaml ---
+--- control/system_config.yaml ---
 
 architecture_version: "1.0"
 publication:
