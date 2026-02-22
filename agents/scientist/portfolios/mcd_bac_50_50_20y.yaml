@@ -1,0 +1,6 @@
+name: mcd_bac_50_50_20y
+tickers:
+  MCD: 0.5
+  BAC: 0.5
+rebalance: monthly
+lookback_years: 20
