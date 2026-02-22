@@ -1,17 +1,20 @@
-architecture_version: "1.0"
+architecture_version: "2.0"
 publication:
-  reports_dir: "reports/"
+  reports_dir: "outputs/reports/"
+  archive_dir: "outputs/reports/archive/"
   filename_format: "YYYY-MM-DD_HH-MM_<strategy>.html"
   index_source: "filename_timestamp"
   overwrite_allowed: false
-  public_url_root: "https://bavvvy.github.io/agent-lab/reports/"
+  public_url_root: "https://bavvvy.github.io/agent-lab/outputs/reports/"
 workflow:
-  publish_script: "scientist-workspace/publish.py"
+  publish_script: "agents/scientist/publish.py"
   index_regenerated_within_publish: true
 guardrails:
   modifiable_paths:
-    - "reports/"
-    - "scientist-workspace/"
+    - "control/"
+    - "agents/node/"
+    - "agents/scientist/"
+    - "contracts/"
   protected_paths:
-    - "archive/"
     - ".git/"
+    - "outputs/"
