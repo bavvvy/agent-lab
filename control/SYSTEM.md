@@ -51,6 +51,22 @@ In `agents/scientist/publish.py`:
 8. Commit and push to `origin/main`.
 9. Enforce HEAD parity (`HEAD == origin/main`).
 
+### Timestamp-Only Report Invariant
+Only report files matching the format:
+
+`YYYY-MM-DD_HH-MM_<strategy>.html`
+
+may exist in `outputs/reports/`.
+
+Non-timestamped report files such as:
+
+`<strategy>.html`
+
+are prohibited and must not be created by the publish pipeline.
+
+The index must derive entries exclusively from timestamped filenames.
+If non-timestamped files are detected, this constitutes architectural drift and must be corrected.
+
 ## Repository Identity Invariant
 The following files must NOT exist at repository root:
 - `AGENTS.md`
