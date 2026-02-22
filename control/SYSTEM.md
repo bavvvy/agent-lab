@@ -51,6 +51,23 @@ In `agents/scientist/publish.py`:
 8. Commit and push to `origin/main`.
 9. Enforce HEAD parity (`HEAD == origin/main`).
 
+## Repository Identity Invariant
+The following files must NOT exist at repository root:
+- `AGENTS.md`
+- `BOOTSTRAP.md`
+- `IDENTITY.md`
+- `SOUL.md`
+- `TOOLS.md`
+- `USER.md`
+- `HEARTBEAT.md`
+
+Identity files are permitted ONLY in:
+- `control/`
+- `agents/node/`
+- `agents/scientist/`
+
+If root-level identity files are detected, this constitutes architectural drift and must be corrected before any publish action.
+
 ## Guardrails
 ### Modifiable
 - `control/`
