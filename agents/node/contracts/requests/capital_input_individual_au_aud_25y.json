@@ -1,0 +1,26 @@
+{
+  "entity_profile": {
+    "entity_type": "individual",
+    "jurisdiction": "Australia",
+    "base_currency": "AUD"
+  },
+  "capital_position": {
+    "investable_assets": 1200000,
+    "annual_savings_rate": 180000,
+    "liquidity_reserve_required": 120000
+  },
+  "risk_posture": {
+    "volatility_tolerance": "medium",
+    "drawdown_tolerance": "medium",
+    "time_horizon_years": 25
+  },
+  "objectives": {
+    "primary_goal": "wealth_compounding",
+    "secondary_constraints": []
+  },
+  "structural_constraints": {
+    "leverage_allowed": false,
+    "illiquidity_allowed": true,
+    "regulatory_constraints": []
+  }
+}
