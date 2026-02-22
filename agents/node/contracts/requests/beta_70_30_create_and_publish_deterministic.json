@@ -1,0 +1,32 @@
+{
+  "contract_type": "strategy_execution_request",
+  "intent": "Create a new portfolio based on beta_60_40 with adjusted 70/30 weights using the same underlying assets.",
+  "base_strategy": "beta_60_40",
+  "new_strategy": "beta_70_30",
+  "weights": {
+    "SPY": 0.70,
+    "AGG": 0.30
+  },
+  "action": "create_and_publish",
+  "mode": "deterministic",
+  "execution": {
+    "execute": false,
+    "publish": false,
+    "call_scientist": false
+  },
+  "constraints": {
+    "do_not_modify": [
+      "agents/",
+      "outputs/",
+      "control/"
+    ],
+    "do_not_create": [
+      "yaml"
+    ]
+  },
+  "deliverables": [
+    "strategy_definition",
+    "publish_report"
+  ],
+  "status": "contract_only"
+}
