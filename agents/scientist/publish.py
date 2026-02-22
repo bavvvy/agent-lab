@@ -126,11 +126,14 @@ def main() -> int:
     portfolio = __import__("yaml").safe_load(portfolio_path.read_text(encoding="utf-8"))
     strategy_slug = str(portfolio.get("name", strategy)).replace("_", "-").lower()
     reports_dir = repo_root / "outputs" / "reports"
-    dashboard_path = reports_dir / f"{strategy_slug}.html"
+    source_path = reports_dir / f"{strategy_slug}.html"
     ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
     versioned_name = f"{ts_utc}_{strategy_slug}.html"
     ensure_timestamped_report_name(versioned_name, strategy_slug)
     versioned_path = reports_dir / versioned_name
+
+    if not source_path.exists():
+        raise FileNotFoundError(f"Expected source report not found: {source_path}")
 
     archive_dir = reports_dir / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
@@ -138,7 +141,7 @@ def main() -> int:
         if existing.name != versioned_name:
             shutil.move(str(existing), str(archive_dir / existing.name))
 
-    versioned_path.write_text(dashboard_path.read_text(encoding="utf-8"), encoding="utf-8")
+    shutil.move(str(source_path), str(versioned_path))
 
     regenerate_index(repo_root)
     run(["git", "add", "-A"], repo_root)
