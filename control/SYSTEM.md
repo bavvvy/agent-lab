@@ -68,6 +68,38 @@ Identity files are permitted ONLY in:
 
 If root-level identity files are detected, this constitutes architectural drift and must be corrected before any publish action.
 
+## Node Capability Specification (Passive Mode)
+Purpose:
+Node is the external interface layer. It ingests unstructured human instructions (e.g., from Discord) and produces structured contracts for execution by Scientist.
+
+Scope (Allowed):
+- Ingest natural language instructions.
+- Validate payload structure.
+- Generate structured JSON requests.
+- Generate human-readable briefs.
+- Write ONLY to:
+  - `contracts/requests/`
+  - `contracts/briefs/`
+
+Explicitly Forbidden:
+- Modifying `control/`
+- Modifying `agents/scientist/`
+- Modifying `outputs/`
+- Calling `publish.py`
+- Executing backtests directly
+- Updating `system_config.yaml`
+- Introducing new top-level directories
+- Writing to repository root
+
+Execution Boundary:
+- Scientist must consume structured contracts only.
+- Scientist must not parse raw Discord messages.
+
+Autonomy Level:
+Node operates in Passive Mode:
+- It writes contracts.
+- It does NOT trigger execution automatically.
+
 ## Guardrails
 ### Modifiable
 - `control/`
@@ -78,6 +110,13 @@ If root-level identity files are detected, this constitutes architectural drift 
 ### Protected / caution
 - `.git/`
 - `outputs/` (artifact space; modify only via execution workflows unless explicitly requested)
+
+### Node Write Guardrail
+Node write permissions are restricted to:
+- `contracts/requests/`
+- `contracts/briefs/`
+
+Any attempt to write elsewhere constitutes architectural violation.
 
 ## Multi-agent responsibility summary
 - Node agent (`agents/node/`) validates and packages structured requests into contracts.
