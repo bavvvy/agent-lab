@@ -1,0 +1,26 @@
+{
+  "entity_profile": {
+    "entity_type": "individual | operator | family_office",
+    "jurisdiction": "string",
+    "base_currency": "string"
+  },
+  "capital_position": {
+    "investable_assets": "number",
+    "annual_savings_rate": "number",
+    "liquidity_reserve_required": "number"
+  },
+  "risk_posture": {
+    "volatility_tolerance": "low | medium | high",
+    "drawdown_tolerance": "low | medium | high",
+    "time_horizon_years": "number"
+  },
+  "objectives": {
+    "primary_goal": "wealth_compounding | capital_preservation | income_generation | hybrid",
+    "secondary_constraints": []
+  },
+  "structural_constraints": {
+    "leverage_allowed": "boolean",
+    "illiquidity_allowed": "boolean",
+    "regulatory_constraints": []
+  }
+}

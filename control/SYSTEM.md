@@ -96,6 +96,9 @@ Scope (Allowed):
 - Write ONLY to:
   - `contracts/requests/`
   - `contracts/briefs/`
+- Node must output `capital_input` objects conforming to `contracts/schema/capital_input_schema.json`.
+- Node must not contain allocation logic.
+- All cash / beta / alpha doctrine resides exclusively within Scientist.
 
 Explicitly Forbidden:
 - Modifying `control/`
@@ -137,6 +140,7 @@ Any attempt to write elsewhere constitutes architectural violation.
 ## Multi-agent responsibility summary
 - Node agent (`agents/node/`) validates and packages structured requests into contracts.
 - Scientist agent (`agents/scientist/`) executes portfolio analytics and publication workflows.
+- Scientist consumes `capital_input` objects and derives coherent cash / beta / alpha allocations deterministically.
 - Control-plane (`control/`) defines architecture and invariants without replacing runtime truth.
 
 ## Control Commands
