@@ -130,6 +130,14 @@ Node operates in Passive Mode:
 - `.git/`
 - `outputs/` (artifact space; modify only via execution workflows unless explicitly requested)
 
+### Execution Write Scope Safeguard
+Default write targets are restricted to:
+- `control/`
+- `agents/node/`
+- `agents/scientist/`
+
+Repository-root writes are prohibited unless explicitly triggered by a defined control command.
+
 ### Node Write Guardrail
 Node write permissions are restricted to:
 - `contracts/requests/`
