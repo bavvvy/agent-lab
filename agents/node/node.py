@@ -9,10 +9,20 @@ from typing import Any, Dict
 from uuid import uuid4
 
 
+_FORBIDDEN_IDENTITY_STEMS = {"AGENTS", "BOOTSTRAP", "IDENTITY", "SOUL", "TOOLS", "USER", "HEARTBEAT"}
+
+
 def _assert_root_write_allowed(target: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     t = target.resolve()
-    if t.parent.resolve() == repo_root.resolve() and t.name != "BOOTSTRAP_EXPORT.txt":
+    if t.parent.resolve() != repo_root.resolve():
+        return
+
+    if t.name != "BOOTSTRAP_EXPORT.txt":
+        raise RuntimeError("Root write blocked: immutable root policy.")
+
+    stem = Path(t.name).stem.upper()
+    if stem in _FORBIDDEN_IDENTITY_STEMS:
         raise RuntimeError("Root write blocked: immutable root policy.")
 
 try:
