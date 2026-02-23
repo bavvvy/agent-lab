@@ -8,6 +8,8 @@ import pandas as pd
 import yfinance as yf
 from pandas.tseries.offsets import BDay
 
+from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
+
 TICKERS = ["SPY", "AGG", "TLT", "TIP", "GLD", "DBC"]
 SOURCE = "yfinance"
 AUTO_ADJUST = True
@@ -65,12 +67,16 @@ def _load_existing() -> pd.DataFrame | None:
 
 
 def _save_dataset(df: pd.DataFrame) -> None:
+    assert_root_write_allowed(DATA_PATH)
+    assert_not_forbidden_identity_root_file(DATA_PATH)
     df_to_save = df.copy()
     df_to_save.index.name = "date"
     df_to_save.to_parquet(DATA_PATH)
 
 
 def _save_metadata(df: pd.DataFrame) -> None:
+    assert_root_write_allowed(META_PATH)
+    assert_not_forbidden_identity_root_file(META_PATH)
     meta = {
         "last_update_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "tickers": TICKERS,

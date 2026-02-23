@@ -19,6 +19,7 @@ import yaml
 
 from portfolio_engine.engine import PortfolioEngine
 from report_template import render_strategy_report
+from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "prices_master.parquet"
 PORTFOLIO_DIR = Path(__file__).resolve().parent / "portfolios"
@@ -248,10 +249,14 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
 
     if output_dataset_path:
         out_path = Path(output_dataset_path)
+        assert_root_write_allowed(out_path)
+        assert_not_forbidden_identity_root_file(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         canonical.to_parquet(out_path, index=False)
 
         csv_path = out_path.with_suffix(".csv")
+        assert_root_write_allowed(csv_path)
+        assert_not_forbidden_identity_root_file(csv_path)
         canonical.to_csv(csv_path, index=False, float_format="%.10f")
 
         print(f"CANONICAL_DATASET_PATH: {out_path}")
@@ -363,6 +368,8 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
         drawdown_chart_b64=drawdown_b64,
     )
 
+    assert_root_write_allowed(report_path)
+    assert_not_forbidden_identity_root_file(report_path)
     report_path.write_text(html_report, encoding="utf-8")
 
     print(f"CONFIG: {portfolio_path}")
@@ -378,6 +385,8 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
         archive_dir.mkdir(parents=True, exist_ok=True)
         ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
         archive_path = archive_dir / f"{ts_utc}_{strategy_slug}.html"
+        assert_root_write_allowed(archive_path)
+        assert_not_forbidden_identity_root_file(archive_path)
         archive_path.write_text(html_report, encoding="utf-8")
 
         git_cmd(["git", "add", str(report_path), str(archive_path)])

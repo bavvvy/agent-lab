@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from hierarchy_loader import load_hierarchy
 from weighting_logic import weight_level_one, weight_within_group
+from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 
 def _repo_root() -> Path:
@@ -58,6 +62,8 @@ def run_allocator() -> Path:
     if not df.empty:
         df = df.groupby(["ticker", "instrument_type"], as_index=False)["target_weight"].sum()
 
+    assert_root_write_allowed(out_path)
+    assert_not_forbidden_identity_root_file(out_path)
     df.to_csv(out_path, index=False)
     return out_path
 

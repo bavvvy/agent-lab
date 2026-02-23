@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 import backtest as bt
+from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 
 def fig_to_base64(fig) -> str:
@@ -289,6 +290,8 @@ def main() -> int:
 <h2>Conclusion</h2><ul>{''.join(f'<li>{c}</li>' for c in conclusion)}</ul>
 </body></html>"""
 
+    assert_root_write_allowed(out_path)
+    assert_not_forbidden_identity_root_file(out_path)
     out_path.write_text(html_doc, encoding="utf-8")
     print(f"COMPARISON_REPORT_PATH: {out_path}")
     return 0
