@@ -1,0 +1,7 @@
+level1_asset_class,level2_sub_asset_class,level3_strategy_style,level4_instrument,instrument_type
+growth_equities,developed_us,large_cap_core,SPY,etf
+growth_equities,developed_us,large_cap_low_vol,SPLV,etf
+fixed_income,government_bonds,duration_short,SHY,etf
+fixed_income,government_bonds,duration_long,TLT,etf
+real_assets,commodities,broad_beta,DBC,etf
+real_assets,gold,physical_beta,GLD,etf

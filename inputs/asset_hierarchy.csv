@@ -1,7 +1,0 @@
-level1,level2,level3,level4,ticker,instrument_type
-growth,developed_us,large_cap,core,SPY,etf
-growth,developed_us,large_cap,defensive,SPLV,etf
-income,fixed_income,government,duration_short,SHY,etf
-income,fixed_income,government,duration_long,TLT,etf
-real_assets,commodities,broad,beta,DBC,etf
-real_assets,gold,physical,beta,GLD,etf

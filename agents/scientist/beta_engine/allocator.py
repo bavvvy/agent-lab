@@ -22,27 +22,30 @@ def _collect_allocations(hierarchy: dict) -> list[dict[str, float | str]]:
     l1_weights = weight_level_one(hierarchy)
 
     for l1, l1_node in hierarchy.items():
-        w1 = l1_weights.get(l1, 0.0)
+        w1 = l1_weights.get(str(l1), 0.0)
 
         l2_weights = weight_within_group(l1_node)
         for l2, l2_node in l1_node.items():
-            w2 = l2_weights.get(l2, 0.0)
+            w2 = l2_weights.get(str(l2), 0.0)
 
             l3_weights = weight_within_group(l2_node)
             for l3, l3_node in l2_node.items():
-                w3 = l3_weights.get(l3, 0.0)
+                w3 = l3_weights.get(str(l3), 0.0)
 
                 l4_weights = weight_within_group(l3_node)
-                for l4, leaf_list in l3_node.items():
-                    w4 = l4_weights.get(l4, 0.0)
+                for l4, instruments in l3_node.items():
+                    w4 = l4_weights.get(str(l4), 0.0)
 
-                    leaf_weights = weight_within_group(leaf_list)
-                    for i, leaf in enumerate(leaf_list):
-                        wi = leaf_weights.get(str(i), 0.0)
+                    instrument_weights = weight_within_group(instruments)
+                    for i, instrument in enumerate(instruments):
+                        wi = instrument_weights.get(str(i), 0.0)
                         rows.append(
                             {
-                                "ticker": leaf["ticker"],
-                                "instrument_type": leaf["instrument_type"],
+                                "level1_asset_class": l1,
+                                "level2_sub_asset_class": l2,
+                                "level3_strategy_style": l3,
+                                "level4_instrument": l4,
+                                "instrument_type": instrument["instrument_type"],
                                 "target_weight": w1 * w2 * w3 * w4 * wi,
                             }
                         )
@@ -60,7 +63,16 @@ def run_allocator() -> Path:
 
     df = pd.DataFrame(rows)
     if not df.empty:
-        df = df.groupby(["ticker", "instrument_type"], as_index=False)["target_weight"].sum()
+        df = df.groupby(
+            [
+                "level1_asset_class",
+                "level2_sub_asset_class",
+                "level3_strategy_style",
+                "level4_instrument",
+                "instrument_type",
+            ],
+            as_index=False,
+        )["target_weight"].sum()
 
     assert_root_write_allowed(out_path)
     assert_not_forbidden_identity_root_file(out_path)

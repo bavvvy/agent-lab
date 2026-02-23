@@ -1,7 +1,7 @@
-ticker,instrument_type,target_weight
-DBC,etf,0.16666666666666666
-GLD,etf,0.16666666666666666
-SHY,etf,0.16666666666666666
-SPLV,etf,0.16666666666666666
-SPY,etf,0.16666666666666666
-TLT,etf,0.16666666666666666
+level1_asset_class,level2_sub_asset_class,level3_strategy_style,level4_instrument,instrument_type,target_weight
+fixed_income,government_bonds,duration_long,TLT,etf,0.16666666666666666
+fixed_income,government_bonds,duration_short,SHY,etf,0.16666666666666666
+growth_equities,developed_us,large_cap_core,SPY,etf,0.16666666666666666
+growth_equities,developed_us,large_cap_low_vol,SPLV,etf,0.16666666666666666
+real_assets,commodities,broad_beta,DBC,etf,0.16666666666666666
+real_assets,gold,physical_beta,GLD,etf,0.16666666666666666
