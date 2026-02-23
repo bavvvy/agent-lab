@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 
+
+def _assert_root_write_allowed(target: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    t = target.resolve()
+    if t.parent.resolve() == repo_root.resolve() and t.name != "BOOTSTRAP_EXPORT.txt":
+        raise RuntimeError("Root write blocked: immutable root policy.")
+
 try:
     from schema import validate_payload, validate_required_fields
 except ModuleNotFoundError:  # package execution path
@@ -102,6 +109,8 @@ class NodeAgent:
         json_path = requests_dir / f"{request_id}.json"
         md_path = briefs_dir / f"{request_id}.md"
 
+        _assert_root_write_allowed(json_path)
+        _assert_root_write_allowed(md_path)
         json_path.write_text(json.dumps(machine_contract, indent=2), encoding="utf-8")
         md_path.write_text(human_brief, encoding="utf-8")
 

@@ -23,11 +23,11 @@ def assert_root_write_allowed(target: Path) -> None:
 
     if t.parent == root:
         if t.name != "BOOTSTRAP_EXPORT.txt":
-            raise RuntimeError("Root write blocked by Repository Identity Invariant.")
+            raise RuntimeError("Root write blocked: immutable root policy.")
 
 
 def assert_not_forbidden_identity_root_file(target: Path) -> None:
     root = repo_root().resolve()
     t = target.resolve()
     if t.parent == root and t.name in FORBIDDEN_ROOT_FILES:
-        raise RuntimeError("Root write blocked by Repository Identity Invariant.")
+        raise RuntimeError("Root write blocked: immutable root policy.")
