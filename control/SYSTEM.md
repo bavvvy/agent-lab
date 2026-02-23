@@ -67,8 +67,22 @@ are prohibited and must not be created by the publish pipeline.
 The index must derive entries exclusively from timestamped filenames.
 If non-timestamped files are detected, this constitutes architectural drift and must be corrected.
 
+## Immutable Root Policy
+Repository root is immutable except for explicitly allowed files.
+
+- Allowed root file: `BOOTSTRAP_EXPORT.txt`
+- Identity artifacts must exist ONLY in `control/`
+- Runtime layers may not write to repository root
+
 ## Repository Identity Invariant
 The following files must NOT exist at repository root:
+- `AGENTS`
+- `BOOTSTRAP`
+- `IDENTITY`
+- `SOUL`
+- `TOOLS`
+- `USER`
+- `HEARTBEAT`
 - `AGENTS.md`
 - `BOOTSTRAP.md`
 - `IDENTITY.md`
@@ -79,8 +93,6 @@ The following files must NOT exist at repository root:
 
 Identity files are permitted ONLY in:
 - `control/`
-- `agents/node/`
-- `agents/scientist/`
 
 If root-level identity files are detected, this constitutes architectural drift and must be corrected before any publish action.
 
@@ -144,6 +156,13 @@ Node write permissions are restricted to:
 - `contracts/briefs/`
 
 Any attempt to write elsewhere constitutes architectural violation.
+
+## Layered Beta Architecture Invariant
+- Hierarchy layer: structure only
+- Instrument Mapping layer: implementation mapping only
+- Portfolio Definitions layer: allocation definitions only
+- Portfolio Models layer: allocation logic only
+- Allocator layer: orchestration only
 
 ## Multi-agent responsibility summary
 - Node agent (`agents/node/`) validates and packages structured requests into contracts.
