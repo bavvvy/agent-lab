@@ -53,6 +53,22 @@ In `agents/scientist/publish.py`:
 8. Commit and push to `origin/main`.
 9. Enforce HEAD parity (`HEAD == origin/main`).
 
+### Timestamp-Only Report Invariant
+Only report files matching the format:
+
+`YYYY-MM-DD_HH-MM_<strategy>.html`
+
+may exist in `outputs/reports/`.
+
+Non-timestamped report files such as:
+
+`<strategy>.html`
+
+are prohibited and must not be created by the publish pipeline.
+
+The index must derive entries exclusively from timestamped filenames.
+If non-timestamped files are detected, this constitutes architectural drift and must be corrected.
+
 ## Repository Identity Invariant
 The following files must NOT exist at repository root:
 - `AGENTS.md`
@@ -70,6 +86,41 @@ Identity files are permitted ONLY in:
 
 If root-level identity files are detected, this constitutes architectural drift and must be corrected before any publish action.
 
+## Node Capability Specification (Passive Mode)
+Purpose:
+Node is the external interface layer. It ingests unstructured human instructions (e.g., from Discord) and produces structured contracts for execution by Scientist.
+
+Scope (Allowed):
+- Ingest natural language instructions.
+- Validate payload structure.
+- Generate structured JSON requests.
+- Generate human-readable briefs.
+- Write ONLY to:
+  - `contracts/requests/`
+  - `contracts/briefs/`
+- Node must output `capital_input` objects conforming to `contracts/schema/capital_input_schema.json`.
+- Node must not contain allocation logic.
+- All cash / beta / alpha doctrine resides exclusively within Scientist.
+
+Explicitly Forbidden:
+- Modifying `control/`
+- Modifying `agents/scientist/`
+- Modifying `outputs/`
+- Calling `publish.py`
+- Executing backtests directly
+- Updating `system_config.yaml`
+- Introducing new top-level directories
+- Writing to repository root
+
+Execution Boundary:
+- Scientist must consume structured contracts only.
+- Scientist must not parse raw Discord messages.
+
+Autonomy Level:
+Node operates in Passive Mode:
+- It writes contracts.
+- It does NOT trigger execution automatically.
+
 ## Guardrails
 ### Modifiable
 - `control/`
@@ -81,9 +132,17 @@ If root-level identity files are detected, this constitutes architectural drift 
 - `.git/`
 - `outputs/` (artifact space; modify only via execution workflows unless explicitly requested)
 
+### Node Write Guardrail
+Node write permissions are restricted to:
+- `contracts/requests/`
+- `contracts/briefs/`
+
+Any attempt to write elsewhere constitutes architectural violation.
+
 ## Multi-agent responsibility summary
 - Node agent (`agents/node/`) validates and packages structured requests into contracts.
 - Scientist agent (`agents/scientist/`) executes portfolio analytics and publication workflows.
+- Scientist consumes `capital_input` objects and derives coherent cash / beta / alpha allocations deterministically.
 - Control-plane (`control/`) defines architecture and invariants without replacing runtime truth.
 
 ## Control Commands
@@ -100,6 +159,41 @@ When the phrase `generate bootstrap` is received, the system must:
    - `Regenerate portable control-plane bootstrap export`
 6. Push to `origin main`.
 7. Confirm HEAD parity `TRUE`.
+
+### update system
+When the phrase `update system` is received, the system must:
+1. Inspect live repository state at repo root.
+2. Inspect:
+   - `agents/scientist/backtest.py`
+   - `agents/scientist/compare.py`
+   - `agents/scientist/publish.py`
+   - `agents/node/`
+   - `outputs/`
+   - `contracts/`
+3. Derive architecture strictly from current repository state.
+4. Update ONLY the following files if misaligned:
+   - `control/SYSTEM.md`
+   - `control/CONTEXT_BOOTSTRAP.md`
+   - `control/system_config.yaml`
+5. Requirements:
+   - Preserve canonical publish root: `outputs/reports/`
+   - Preserve archive path: `outputs/reports/archive/`
+   - Preserve timestamp format invariant.
+   - Preserve pytest gate + git add + commit + push flow.
+   - Preserve HEAD parity enforcement.
+   - Preserve Repository Identity Invariant.
+   - Do NOT introduce legacy references (e.g., `scientist-workspace/`, root `reports/`).
+6. Do NOT modify:
+   - `agents/`
+   - `outputs/`
+   - `contracts/`
+   - `.git/`
+7. After changes:
+   - Show diff summary for modified control files only.
+   - Commit with message:
+     - `Update control-plane documentation to reflect live repository state`
+   - Push to `origin main`.
+   - Confirm HEAD parity `TRUE`.
 
 
 --- control/CONTEXT_BOOTSTRAP.md ---
