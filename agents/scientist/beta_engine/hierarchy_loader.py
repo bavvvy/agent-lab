@@ -6,11 +6,11 @@ from typing import Any
 import pandas as pd
 
 REQUIRED_COLUMNS = [
-    "level1_asset_class",
-    "level2_sub_asset_class",
-    "level3_strategy_style",
-    "level4_instrument",
-    "instrument_type",
+    "level1",
+    "level2",
+    "level3",
+    "level4",
+    "node_id",
 ]
 
 
@@ -32,25 +32,27 @@ def load_hierarchy(csv_path: Path | None = None) -> dict[str, Any]:
     if df.empty:
         raise ValueError("Malformed hierarchy CSV: file contains no rows")
 
-    if df["level1_asset_class"].isna().any() or (df["level1_asset_class"].astype(str).str.strip() == "").any():
-        raise ValueError("Malformed hierarchy CSV: column 'level1_asset_class' contains blank values")
+    for col in REQUIRED_COLUMNS:
+        if df[col].isna().any() or (df[col].astype(str).str.strip() == "").any():
+            raise ValueError(f"Malformed hierarchy CSV: column '{col}' contains blank values")
 
-    if df["level4_instrument"].isna().any() or (df["level4_instrument"].astype(str).str.strip() == "").any():
-        raise ValueError("Malformed hierarchy CSV: column 'level4_instrument' contains blank values")
+    if df["node_id"].duplicated().any():
+        duplicates = sorted(df.loc[df["node_id"].duplicated(), "node_id"].astype(str).unique().tolist())
+        raise ValueError(f"Malformed hierarchy CSV: node_id must be unique; duplicates: {duplicates}")
 
     hierarchy: dict[str, Any] = {}
 
     for _, row in df.iterrows():
-        l1 = str(row["level1_asset_class"]).strip()
-        l2 = str(row["level2_sub_asset_class"]).strip()
-        l3 = str(row["level3_strategy_style"]).strip()
-        l4 = str(row["level4_instrument"]).strip()
-        instrument_type = str(row["instrument_type"]).strip()
+        l1 = str(row["level1"]).strip()
+        l2 = str(row["level2"]).strip()
+        l3 = str(row["level3"]).strip()
+        l4 = str(row["level4"]).strip()
+        node_id = str(row["node_id"]).strip()
 
         hierarchy.setdefault(l1, {})
         hierarchy[l1].setdefault(l2, {})
         hierarchy[l1][l2].setdefault(l3, {})
-        hierarchy[l1][l2][l3].setdefault(l4, [])
-        hierarchy[l1][l2][l3][l4].append({"instrument_type": instrument_type})
+        hierarchy[l1][l2][l3].setdefault(l4, {})
+        hierarchy[l1][l2][l3][l4][node_id] = {"node_id": node_id}
 
     return hierarchy

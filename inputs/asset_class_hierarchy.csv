@@ -1,7 +1,7 @@
-level1_asset_class,level2_sub_asset_class,level3_strategy_style,level4_instrument,instrument_type
-growth_equities,developed_us,large_cap_core,SPY,etf
-growth_equities,developed_us,large_cap_low_vol,SPLV,etf
-fixed_income,government_bonds,duration_short,SHY,etf
-fixed_income,government_bonds,duration_long,TLT,etf
-real_assets,commodities,broad_beta,DBC,etf
-real_assets,gold,physical_beta,GLD,etf
+level1,level2,level3,level4,node_id
+growth_equities,developed_us,large_cap,core,L1_GROWTH_US_LC_CORE
+growth_equities,developed_us,large_cap,low_vol,L1_GROWTH_US_LC_LOWVOL
+fixed_income,government_bonds,developed,duration_short,L1_FI_GOV_DEV_SHORT
+fixed_income,government_bonds,developed,duration_long,L1_FI_GOV_DEV_LONG
+real_assets,commodities,broad,beta,L1_RA_CMDTY_BROAD_BETA
+real_assets,gold,physical,beta,L1_RA_GOLD_PHYS_BETA
