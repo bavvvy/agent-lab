@@ -1,0 +1,13 @@
+portfolio_name,node_id,weight,weight_type
+balanced_static,L1_GROWTH_US_LC_CORE,0.30,static
+balanced_static,L1_GROWTH_US_LC_LOWVOL,0.20,static
+balanced_static,L1_FI_GOV_DEV_SHORT,0.15,static
+balanced_static,L1_FI_GOV_DEV_LONG,0.20,static
+balanced_static,L1_RA_CMDTY_BROAD_BETA,0.10,static
+balanced_static,L1_RA_GOLD_PHYS_BETA,0.05,static
+balanced_rule_stub,L1_GROWTH_US_LC_CORE,,rule_based
+balanced_rule_stub,L1_GROWTH_US_LC_LOWVOL,,rule_based
+balanced_rule_stub,L1_FI_GOV_DEV_SHORT,,rule_based
+balanced_rule_stub,L1_FI_GOV_DEV_LONG,,rule_based
+balanced_rule_stub,L1_RA_CMDTY_BROAD_BETA,,rule_based
+balanced_rule_stub,L1_RA_GOLD_PHYS_BETA,,rule_based

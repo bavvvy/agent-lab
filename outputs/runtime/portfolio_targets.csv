@@ -1,0 +1,7 @@
+portfolio_name,node_id,instrument_id,instrument_type,allocation_mode,target_weight
+balanced_rule_stub,L1_FI_GOV_DEV_LONG,TLT,etf,rule_based_stub,0.16666666666666666
+balanced_rule_stub,L1_FI_GOV_DEV_SHORT,SHY,etf,rule_based_stub,0.16666666666666666
+balanced_rule_stub,L1_GROWTH_US_LC_CORE,SPY,etf,rule_based_stub,0.16666666666666666
+balanced_rule_stub,L1_GROWTH_US_LC_LOWVOL,SPLV,etf,rule_based_stub,0.16666666666666666
+balanced_rule_stub,L1_RA_CMDTY_BROAD_BETA,DBC,etf,rule_based_stub,0.16666666666666666
+balanced_rule_stub,L1_RA_GOLD_PHYS_BETA,GLD,etf,rule_based_stub,0.16666666666666666
