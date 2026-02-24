@@ -18,3 +18,14 @@ This file is subordinate to control/*. In case of conflict, control/ prevails.
 - Keep outputs deterministic.
 - Preserve path and naming invariants defined in `control/SYSTEM.md`.
 - Use explicit commits with clear intent.
+
+## Infrastructure Commands
+- Trigger phrase: `generate repo tree` (case-insensitive match accepted).
+- Action: run `./scripts/generate_repo_tree.sh` from repo root.
+- Behavior:
+  - Exports full folder/file tree to depth 4.
+  - Excludes `.git`, `.venv`, `__pycache__`, `outputs/capital/runs`, `outputs/research/runs`, and runtime-generated datasets.
+  - Deterministic sorted output.
+  - Writes to `control/infra_exports/repo_tree_YYYYMMDD.txt`.
+  - Prints output path + first 40 lines.
+  - Does not auto-commit.
