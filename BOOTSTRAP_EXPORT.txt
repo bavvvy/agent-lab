@@ -215,56 +215,52 @@ When the phrase `generate bootstrap` is received, the system must:
 6. Push to `origin main`.
 7. Confirm HEAD parity `TRUE`.
 
-### update system
-When the phrase `update system` is received, the system must:
+### refresh constitution
+When the phrase `refresh constitution` is received, the system must:
 1. Inspect live repository state at repo root.
-2. Inspect:
-   - `agents/scientist/engine/backtest.py`
-   - `agents/scientist/engine/compare.py`
-   - `agents/scientist/engine/publish.py`
-   - `agents/node/`
-   - `systems/`
-   - `outputs/`
-   - `contracts/`
-   - `inputs/`
-3. Derive architecture strictly from current repository state.
-4. Update ONLY the following files if misaligned:
-   - `control/SYSTEM.md`
-   - `control/CONTEXT_BOOTSTRAP.md`
-   - `control/system_config.yaml`
-5. Requirements:
-   - Preserve mode-scoped output roots under `outputs/<mode>/`.
-   - Preserve timestamp format invariant.
-   - Preserve pytest gate + git add + commit + push flow.
-   - Preserve HEAD parity enforcement.
-   - Preserve Repository Identity Invariant.
-   - Do NOT introduce legacy references (e.g., root `reports/`).
-6. Do NOT modify:
-   - `agents/`
-   - `systems/`
-   - `outputs/`
-   - `contracts/`
-   - `.git/`
-7. After changes:
-   - Show diff summary for modified control files only.
-   - Commit with message:
-     - `Update control-plane documentation to reflect live repository state`
-   - Push to `origin main`.
-   - Confirm HEAD parity `TRUE`.
+2. Derive architecture strictly from current repository state.
+3. Update `control/SYSTEM.md` to reflect current layered architecture and invariants.
+4. Reconcile outdated references.
+5. Regenerate `./BOOTSTRAP_EXPORT.txt` at repository root.
+6. Do NOT run npm.
+7. Do NOT upgrade OpenClaw.
+8. Do NOT modify runtime.
+9. Do NOT modify portfolio logic.
+10. Do NOT modify enforcement.
+11. Do NOT change systems config.
+12. Do NOT modify `agents/*`.
+13. Do NOT modify `systems/*`.
+14. Do NOT delete files.
+15. Do NOT automatically commit; print summary and diff preview only.
+
+### regenerate bootstrap export
+When the phrase `regenerate bootstrap export` is received, the system must:
+1. Generate `./BOOTSTRAP_EXPORT.txt` at repository root.
+2. Use current `control/SYSTEM.md` and current repository structure references.
+3. Do NOT modify `control/SYSTEM.md`.
+4. Do NOT modify OpenClaw runtime.
+
+### refresh constitution and bootstrap
+When the phrase `refresh constitution and bootstrap` is received, the system must:
+1. Run `refresh constitution`.
+2. Then run `regenerate bootstrap export`.
+3. Do NOT perform runtime updates.
 
 --- control/CONTEXT_BOOTSTRAP.md ---
 
 # CONTEXT_BOOTSTRAP.md
 
 ## Architecture version
-- 2.0
+- 2.1
 
 ## High-level architecture
-Agent Lab uses a v2 multi-agent structure with explicit separation between control-plane definitions and execution runtime.
+Agent Lab uses a layered architecture with explicit constitutional, system-mode, execution, shared-input, and artifact layers.
 
-- Control-plane: `control/`
-- Execution agents: `agents/node/`, `agents/scientist/`
-- Artifacts/output plane: `outputs/`
+- Constitutional layer: `control/`
+- System mode layer: `systems/` (`capital/`, `research/`)
+- Execution layer: `agents/node/`, `agents/scientist/`
+- Shared data layer: `inputs/`
+- Artifact layer: `outputs/` (mode-scoped)
 - Contracts plane: `contracts/`
 
 ## Responsibility boundaries
@@ -272,43 +268,52 @@ Agent Lab uses a v2 multi-agent structure with explicit separation between contr
 - Owns architecture definitions, invariants, and configuration context.
 - Must describe reality of repository state; it does not execute workloads.
 
+### systems/
+- Owns mode-scoped orchestration/config and portfolio definitions.
+- `systems/capital/` is canonical for capital runtime behavior.
+- `systems/research/` is isolated research-mode configuration.
+
 ### agents/node/
 - Owns structured payload validation and request packaging.
 - Produces contracts in `contracts/requests/` and briefs in `contracts/briefs/`.
 
 ### agents/scientist/
-- Owns deterministic backtest execution (`backtest.py`).
-- Owns comparative report generation (`compare.py`).
-- Owns publication orchestration (`publish.py`).
+- Owns deterministic backtest execution wrappers and engine runtime.
+- Owns comparative report generation.
+- Owns publication orchestration runtime.
 
 ### outputs/
-- Owns publication artifacts and runtime artifacts.
-- Canonical publish root is `outputs/reports/`.
+- Owns runtime and publication artifacts.
+- Artifacts are mode-scoped under `outputs/<mode>/...`.
 
-## Publication model
-- Entrypoint: `agents/scientist/publish.py`
-- Publish root: `outputs/reports/`
-- Archive path: `outputs/reports/archive/`
-- Index path: `outputs/reports/index.html`
+## Publication/output model
+- Entrypoint wrapper: `agents/scientist/publish.py`
+- Engine implementation: `agents/scientist/engine/publish.py`
+- Active runs root: `outputs/<mode>/runs/`
+- Active archive root: `outputs/<mode>/archive/`
+- Active runtime root: `outputs/<mode>/runtime/`
 - Timestamped artifact format: `YYYY-MM-DD_HH-MM_<strategy>.html` (UTC)
 - Index ordering source: filename timestamp parsing
 
 ## Invariants
-1. Publication writes timestamped reports under `outputs/reports/`.
-2. Archive target is `outputs/reports/archive/` and must be created if missing.
-3. Index regeneration targets `outputs/reports/index.html`.
+1. Publication writes timestamped reports under `outputs/<mode>/runs/`.
+2. Archive target is `outputs/<mode>/archive/` and must be created if missing.
+3. Runtime artifacts are mode-scoped under `outputs/<mode>/runtime/`.
 4. Index ordering is derived from filename timestamps, not commit time.
 5. Publish flow stages changes with `git add -A`.
 6. Publish flow executes pytest gate before push when staged changes exist.
 7. Publish flow commits and pushes to `origin/main` when changes exist.
 8. HEAD parity is enforced at end of publish flow.
+9. Capital system must not depend on research system.
 
 ## Guardrails
 ### Modifiable paths
 - `control/`
+- `systems/`
 - `agents/node/`
 - `agents/scientist/`
 - `contracts/`
+- `inputs/`
 
 ### Protected paths
 - `.git/`
@@ -325,23 +330,39 @@ Agent Lab uses a v2 multi-agent structure with explicit separation between contr
 
 --- control/system_config.yaml ---
 
-architecture_version: "2.0"
+architecture_version: "2.1"
+canonical_source: "control/SYSTEM.md"
+
 publication:
-  reports_dir: "outputs/reports/"
-  archive_dir: "outputs/reports/archive/"
+  mode_scoped: true
+  roots:
+    capital:
+      runs_dir: "outputs/capital/runs/"
+      archive_dir: "outputs/capital/archive/"
+      runtime_dir: "outputs/capital/runtime/"
+      public_url_root: "https://bavvvy.github.io/agent-lab/outputs/capital/runs/"
+    research:
+      runs_dir: "outputs/research/runs/"
+      archive_dir: "outputs/research/archive/"
+      runtime_dir: "outputs/research/runtime/"
+      public_url_root: "https://bavvvy.github.io/agent-lab/outputs/research/runs/"
   filename_format: "YYYY-MM-DD_HH-MM_<strategy>.html"
   index_source: "filename_timestamp"
   overwrite_allowed: false
-  public_url_root: "https://bavvvy.github.io/agent-lab/outputs/reports/"
+
 workflow:
   publish_script: "agents/scientist/publish.py"
   index_regenerated_within_publish: true
+  mode_default: "capital"
+
 guardrails:
   modifiable_paths:
     - "control/"
+    - "systems/"
     - "agents/node/"
     - "agents/scientist/"
     - "contracts/"
+    - "inputs/"
   protected_paths:
     - ".git/"
     - "outputs/"

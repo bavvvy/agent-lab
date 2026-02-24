@@ -17,3 +17,11 @@ rebalancer:
 
 constraints:
   leverage: false
+
+beta_engine:
+  weighting_method: "equal_risk"
+  rebalance_frequency: "monthly"
+  vol_lookback: 60
+  target_vol: null
+  turnover_cap: null
+  universe_profile: null

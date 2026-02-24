@@ -1,20 +1,36 @@
-architecture_version: "2.0"
+architecture_version: "2.1"
+canonical_source: "control/SYSTEM.md"
+
 publication:
-  reports_dir: "outputs/reports/"
-  archive_dir: "outputs/reports/archive/"
+  mode_scoped: true
+  roots:
+    capital:
+      runs_dir: "outputs/capital/runs/"
+      archive_dir: "outputs/capital/archive/"
+      runtime_dir: "outputs/capital/runtime/"
+      public_url_root: "https://bavvvy.github.io/agent-lab/outputs/capital/runs/"
+    research:
+      runs_dir: "outputs/research/runs/"
+      archive_dir: "outputs/research/archive/"
+      runtime_dir: "outputs/research/runtime/"
+      public_url_root: "https://bavvvy.github.io/agent-lab/outputs/research/runs/"
   filename_format: "YYYY-MM-DD_HH-MM_<strategy>.html"
   index_source: "filename_timestamp"
   overwrite_allowed: false
-  public_url_root: "https://bavvvy.github.io/agent-lab/outputs/reports/"
+
 workflow:
   publish_script: "agents/scientist/publish.py"
   index_regenerated_within_publish: true
+  mode_default: "capital"
+
 guardrails:
   modifiable_paths:
     - "control/"
+    - "systems/"
     - "agents/node/"
     - "agents/scientist/"
     - "contracts/"
+    - "inputs/"
   protected_paths:
     - ".git/"
     - "outputs/"
