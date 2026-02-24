@@ -29,3 +29,20 @@ This file is subordinate to control/*. In case of conflict, control/ prevails.
   - Writes to `control/infra_exports/repo_tree_YYYYMMDD.txt`.
   - Prints output path + first 40 lines.
   - Does not auto-commit.
+
+## Constitution Maintenance Commands
+- `refresh constitution`
+  - Update `control/SYSTEM.md` to match current repository structure/invariants.
+  - Do **not** run npm.
+  - Do **not** modify OpenClaw runtime.
+  - Do **not** modify engine/enforcement logic.
+  - Do **not** regenerate bootstrap automatically.
+
+- `regenerate bootstrap export`
+  - Generate `BOOTSTRAP_EXPORT.txt` at repo root from current control-plane content.
+  - Do **not** modify `SYSTEM.md`.
+  - Do **not** modify OpenClaw runtime.
+
+- `refresh constitution and bootstrap`
+  - Run `refresh constitution`, then `regenerate bootstrap export`.
+  - No runtime updates.

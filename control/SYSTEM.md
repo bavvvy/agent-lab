@@ -213,39 +213,25 @@ When the phrase `generate bootstrap` is received, the system must:
 6. Push to `origin main`.
 7. Confirm HEAD parity `TRUE`.
 
-### update system
-When the phrase `update system` is received, the system must:
+### refresh constitution
+When the phrase `refresh constitution` is received, the system must:
 1. Inspect live repository state at repo root.
-2. Inspect:
-   - `agents/scientist/engine/backtest.py`
-   - `agents/scientist/engine/compare.py`
-   - `agents/scientist/engine/publish.py`
-   - `agents/node/`
-   - `systems/`
-   - `outputs/`
-   - `contracts/`
-   - `inputs/`
-3. Derive architecture strictly from current repository state.
-4. Update ONLY the following files if misaligned:
-   - `control/SYSTEM.md`
-   - `control/CONTEXT_BOOTSTRAP.md`
-   - `control/system_config.yaml`
-5. Requirements:
-   - Preserve mode-scoped output roots under `outputs/<mode>/`.
-   - Preserve timestamp format invariant.
-   - Preserve pytest gate + git add + commit + push flow.
-   - Preserve HEAD parity enforcement.
-   - Preserve Repository Identity Invariant.
-   - Do NOT introduce legacy references (e.g., root `reports/`).
-6. Do NOT modify:
-   - `agents/`
-   - `systems/`
-   - `outputs/`
-   - `contracts/`
-   - `.git/`
-7. After changes:
-   - Show diff summary for modified control files only.
-   - Commit with message:
-     - `Update control-plane documentation to reflect live repository state`
-   - Push to `origin main`.
-   - Confirm HEAD parity `TRUE`.
+2. Derive architecture strictly from current repository state.
+3. Update `control/SYSTEM.md` to reflect current structure and invariants.
+4. Do NOT run npm.
+5. Do NOT modify OpenClaw runtime.
+6. Do NOT modify engine or enforcement logic.
+7. Do NOT regenerate bootstrap automatically.
+
+### regenerate bootstrap export
+When the phrase `regenerate bootstrap export` is received, the system must:
+1. Generate `./BOOTSTRAP_EXPORT.txt` at repository root.
+2. Use current `control/SYSTEM.md` and current repository structure references.
+3. Do NOT modify `control/SYSTEM.md`.
+4. Do NOT modify OpenClaw runtime.
+
+### refresh constitution and bootstrap
+When the phrase `refresh constitution and bootstrap` is received, the system must:
+1. Run `refresh constitution`.
+2. Then run `regenerate bootstrap export`.
+3. Do NOT perform runtime updates.
