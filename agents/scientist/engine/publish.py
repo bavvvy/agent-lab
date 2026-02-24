@@ -93,6 +93,7 @@ def run_pytest(workspace: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategy", required=True)
+    parser.add_argument("--mode", choices=["capital", "research"], default="capital")
     args = parser.parse_args()
 
     workspace = Path(__file__).resolve().parents[1]
@@ -104,7 +105,7 @@ def main() -> int:
     if strategy == "sandbox":
         raise RuntimeError("Sandbox cannot be published.")
 
-    portfolio_dir = workspace / "portfolios"
+    portfolio_dir = repo_root / "systems" / args.mode / "portfolios"
     portfolio_path = portfolio_dir / f"{strategy}.yaml"
     if not portfolio_path.exists():
         raise FileNotFoundError(f"Portfolio not found: {portfolio_path}")
@@ -118,6 +119,8 @@ def main() -> int:
             strategy,
             "--output-dataset-path",
             str(output_dataset_path),
+            "--mode",
+            args.mode,
         ],
         cwd=str(workspace),
         env={**os.environ, "PYTHONPATH": "."},

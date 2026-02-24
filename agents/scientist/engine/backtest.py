@@ -22,9 +22,25 @@ from report_template import render_strategy_report
 from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 _SCIENTIST_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SYSTEMS_ROOT = _REPO_ROOT / "systems"
 DATA_PATH = _SCIENTIST_ROOT / "data" / "prices_master.parquet"
-PORTFOLIO_DIR = _SCIENTIST_ROOT / "portfolios"
 SYMBOL_MAP = {"AGG": "TLT"}
+
+
+def _resolve_system_mode(mode: str) -> str:
+    allowed = {"capital", "research"}
+    if mode not in allowed:
+        raise ValueError(f"Invalid mode '{mode}'. Allowed: {sorted(allowed)}")
+    return mode
+
+
+def _portfolio_dir(mode: str) -> Path:
+    return _SYSTEMS_ROOT / _resolve_system_mode(mode) / "portfolios"
+
+
+def _config_path(mode: str) -> Path:
+    return _SYSTEMS_ROOT / _resolve_system_mode(mode) / "config.yaml"
 
 
 def ann_std(xs: pd.Series) -> float:
@@ -51,17 +67,18 @@ def _to_engine_symbol(ticker: str) -> str:
     return SYMBOL_MAP.get(ticker, ticker)
 
 
-def _load_portfolio(strategy: str) -> tuple[dict, Path]:
+def _load_portfolio(strategy: str, mode: str = "capital") -> tuple[dict, Path]:
+    portfolio_dir = _portfolio_dir(mode)
     candidate_names = [strategy, strategy.replace("-", "_")]
     path = None
     for n in candidate_names:
-        p = PORTFOLIO_DIR / f"{n}.yaml"
+        p = portfolio_dir / f"{n}.yaml"
         if p.exists():
             path = p
             break
 
     if path is None:
-        for p in sorted(PORTFOLIO_DIR.glob("*.yaml")):
+        for p in sorted(portfolio_dir.glob("*.yaml")):
             payload = yaml.safe_load(p.read_text(encoding="utf-8"))
             if isinstance(payload, dict):
                 nm = str(payload.get("name", "")).replace("-", "_")
@@ -218,12 +235,13 @@ def _build_canonical_dataset(
     return merged[ordered]
 
 
-def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str | None = None) -> None:
-    with open("config.yaml", "r", encoding="utf-8") as f:
+def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str | None = None, mode: str = "capital") -> None:
+    config_path = _config_path(mode)
+    with open(config_path, "r", encoding="utf-8") as f:
         raw_config = yaml.safe_load(f)
-    engine = PortfolioEngine.from_yaml("config.yaml")
+    engine = PortfolioEngine.from_yaml(str(config_path))
 
-    portfolio, portfolio_path = _load_portfolio(strategy)
+    portfolio, portfolio_path = _load_portfolio(strategy, mode=mode)
     strategy_name = str(portfolio["name"])
     strategy_slug = strategy_name.replace("_", "-").lower()
     tickers = list(portfolio["tickers"].keys())
@@ -405,5 +423,6 @@ if __name__ == "__main__":
     parser.add_argument("--strategy", required=True)
     parser.add_argument("--publish", action="store_true")
     parser.add_argument("--output-dataset-path", default=None)
+    parser.add_argument("--mode", choices=["capital", "research"], default="capital")
     args = parser.parse_args()
-    run_backtest(strategy=args.strategy, publish=args.publish, output_dataset_path=args.output_dataset_path)
+    run_backtest(strategy=args.strategy, publish=args.publish, output_dataset_path=args.output_dataset_path, mode=args.mode)
