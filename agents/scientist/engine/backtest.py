@@ -35,6 +35,10 @@ def _resolve_system_mode(mode: str) -> str:
     return mode
 
 
+def _outputs_mode_root(mode: str) -> Path:
+    return _REPO_ROOT / "outputs" / _resolve_system_mode(mode)
+
+
 def _portfolio_dir(mode: str) -> Path:
     return _SYSTEMS_ROOT / _resolve_system_mode(mode) / "portfolios"
 
@@ -358,10 +362,9 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
     cfg_rebalancer = raw_config.get("rebalancer", {})
     cfg_constraints = raw_config.get("constraints", {})
 
-    repo_root = Path(__file__).resolve().parents[3]
-    reports_dir = repo_root / "outputs" / "reports"
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    report_path = reports_dir / f"{strategy_slug}.html"
+    runs_dir = _outputs_mode_root(mode) / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    report_path = runs_dir / f"{strategy_slug}.html"
 
     html_report = render_strategy_report(
         strategy_name=strategy_name,
@@ -400,7 +403,7 @@ def run_backtest(strategy: str, publish: bool = False, output_dataset_path: str 
     print(f"REPORT_PATH: {report_path}")
 
     if publish:
-        archive_dir = reports_dir / "archive"
+        archive_dir = _outputs_mode_root(mode) / "archive"
         archive_dir.mkdir(parents=True, exist_ok=True)
         ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
         archive_path = archive_dir / f"{ts_utc}_{strategy_slug}.html"

@@ -132,6 +132,7 @@ def _table_html(df: pd.DataFrame, numeric_cols: set[str]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategy", action="append", required=True)
+    parser.add_argument("--mode", choices=["capital", "research"], default="capital")
     args = parser.parse_args()
 
     if len(args.strategy) < 2:
@@ -139,8 +140,8 @@ def main() -> int:
 
     workspace = Path(__file__).resolve().parents[1]
     repo_root = workspace.parents[1]
-    reports_dir = repo_root / "outputs" / "reports"
-    reports_dir.mkdir(parents=True, exist_ok=True)
+    runs_dir = repo_root / "outputs" / args.mode / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
 
     names: list[str] = []
     frames: dict[str, pd.DataFrame] = {}
@@ -266,11 +267,11 @@ def main() -> int:
     ]
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
-    out_path = reports_dir / f"{ts}_comparison.html"
+    out_path = runs_dir / f"{ts}_comparison.html"
 
-    archive_dir = reports_dir / "archive"
+    archive_dir = repo_root / "outputs" / args.mode / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
-    for existing in sorted(reports_dir.glob("*_comparison.html")):
+    for existing in sorted(runs_dir.glob("*_comparison.html")):
         if existing.name != out_path.name:
             shutil.move(str(existing), str(archive_dir / existing.name))
 

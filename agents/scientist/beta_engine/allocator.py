@@ -29,7 +29,7 @@ def _flatten_node_ids(hierarchy: dict) -> set[str]:
     return node_ids
 
 
-def run_allocator(portfolio_name: str) -> Path:
+def run_allocator(portfolio_name: str, mode: str = "capital") -> Path:
     hierarchy = load_hierarchy()
     valid_node_ids = _flatten_node_ids(hierarchy)
 
@@ -71,7 +71,7 @@ def run_allocator(portfolio_name: str) -> Path:
                 }
             )
 
-    out_dir = _repo_root() / "outputs" / "runtime"
+    out_dir = _repo_root() / "outputs" / mode / "runtime"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "portfolio_targets.csv"
 
@@ -90,7 +90,8 @@ def run_allocator(portfolio_name: str) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--portfolio-name", required=True)
+    parser.add_argument("--mode", choices=["capital", "research"], default="capital")
     args = parser.parse_args()
 
-    path = run_allocator(portfolio_name=args.portfolio_name)
+    path = run_allocator(portfolio_name=args.portfolio_name, mode=args.mode)
     print(path)

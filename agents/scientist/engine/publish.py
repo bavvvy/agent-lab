@@ -15,13 +15,13 @@ def run(cmd: list[str], cwd: Path) -> str:
     return subprocess.check_output(cmd, cwd=str(cwd), text=True).strip()
 
 
-def regenerate_index(repo_root: Path) -> None:
-    reports = repo_root / "outputs" / "reports"
-    archive = reports / "archive"
-    reports.mkdir(parents=True, exist_ok=True)
+def regenerate_index(repo_root: Path, mode: str) -> None:
+    runs = repo_root / "outputs" / mode / "runs"
+    archive = repo_root / "outputs" / mode / "archive"
+    runs.mkdir(parents=True, exist_ok=True)
     archive.mkdir(parents=True, exist_ok=True)
 
-    current_files = sorted([p for p in reports.glob("*.html") if p.name != "index.html"])
+    current_files = sorted([p for p in runs.glob("*.html") if p.name != "index.html"])
     archive_files = sorted([p for p in archive.glob("*.html")])
 
     current_rows = report_rows_for_index(current_files)
@@ -75,7 +75,7 @@ def regenerate_index(repo_root: Path) -> None:
 </body>
 </html>
 """
-    (reports / "index.html").write_text(html, encoding="utf-8")
+    (runs / "index.html").write_text(html, encoding="utf-8")
 
 
 def run_pytest(workspace: Path) -> None:
@@ -95,6 +95,8 @@ def main() -> int:
     parser.add_argument("--strategy", required=True)
     parser.add_argument("--mode", choices=["capital", "research"], default="capital")
     args = parser.parse_args()
+
+    mode = args.mode
 
     workspace = Path(__file__).resolve().parents[1]
     repo_root = workspace.parents[1]
@@ -128,25 +130,25 @@ def main() -> int:
 
     portfolio = __import__("yaml").safe_load(portfolio_path.read_text(encoding="utf-8"))
     strategy_slug = str(portfolio.get("name", strategy)).replace("_", "-").lower()
-    reports_dir = repo_root / "outputs" / "reports"
-    source_path = reports_dir / f"{strategy_slug}.html"
+    runs_dir = repo_root / "outputs" / mode / "runs"
+    source_path = runs_dir / f"{strategy_slug}.html"
     ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
     versioned_name = f"{ts_utc}_{strategy_slug}.html"
     ensure_timestamped_report_name(versioned_name, strategy_slug)
-    versioned_path = reports_dir / versioned_name
+    versioned_path = runs_dir / versioned_name
 
     if not source_path.exists():
         raise FileNotFoundError(f"Expected source report not found: {source_path}")
 
-    archive_dir = reports_dir / "archive"
+    archive_dir = repo_root / "outputs" / mode / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
-    for existing in sorted(reports_dir.glob(f"*_{strategy_slug}.html")):
+    for existing in sorted(runs_dir.glob(f"*_{strategy_slug}.html")):
         if existing.name != versioned_name:
             shutil.move(str(existing), str(archive_dir / existing.name))
 
     shutil.move(str(source_path), str(versioned_path))
 
-    regenerate_index(repo_root)
+    regenerate_index(repo_root, mode)
     run(["git", "add", "-A"], repo_root)
 
     has_staged = subprocess.call(["git", "diff", "--cached", "--quiet"], cwd=str(repo_root)) != 0
@@ -159,7 +161,7 @@ def main() -> int:
     print(f"HEAD_LOCAL: {local}")
     print(f"HEAD_REMOTE: {remote}")
     print("HEAD_MATCH: true")
-    print("https://bavvvy.github.io/agent-lab/outputs/reports/")
+    print(f"https://bavvvy.github.io/agent-lab/outputs/{mode}/runs/")
     return 0
 
 
