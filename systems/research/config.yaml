@@ -20,8 +20,9 @@ constraints:
 
 beta_engine:
   weighting_method: "equal_risk"
+  vol_lookback_days: 60
   rebalance_frequency: "monthly"
-  vol_lookback: 60
-  target_vol: null
+  drift_threshold: null
+  target_volatility: null
   turnover_cap: null
   universe_profile: null

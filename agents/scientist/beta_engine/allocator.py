@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 import pandas as pd
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -16,6 +17,46 @@ from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _mode_config_path(mode: str) -> Path:
+    """Return systems-level config path for the selected mode.
+
+    Research beta knobs are system-scoped under `systems/<mode>/config.yaml`.
+    Capital remains deterministic unless explicitly configured.
+    """
+    return _repo_root() / "systems" / mode / "config.yaml"
+
+
+def _load_mode_beta_engine_config(mode: str) -> dict:
+    """Load optional beta_engine config for allocator method selection.
+
+    If mode config or `beta_engine` section is absent, return empty mapping
+    so existing deterministic defaults are preserved.
+    """
+    p = _mode_config_path(mode)
+    if not p.exists():
+        return {}
+    payload = yaml.safe_load(p.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {}
+    beta_cfg = payload.get("beta_engine", {})
+    return beta_cfg if isinstance(beta_cfg, dict) else {}
+
+
+def _dispatch_weighting_method(defs: pd.DataFrame, beta_cfg: dict) -> tuple[dict[str, float], str]:
+    """Dispatch weighting method from config while preserving existing math.
+
+    Current phase only scaffolds selection; all methods route to existing
+    `derive_node_weights` implementation (no allocation math changes).
+    """
+    method = str(beta_cfg.get("weighting_method", "default")).strip().lower()
+
+    if method in {"default", "equal_risk", "risk_parity", "hierarchical_risk_parity"}:
+        return derive_node_weights(defs)
+
+    # Unknown methods fall back to existing deterministic behavior.
+    return derive_node_weights(defs)
 
 
 def _flatten_node_ids(hierarchy: dict) -> set[str]:
@@ -30,6 +71,12 @@ def _flatten_node_ids(hierarchy: dict) -> set[str]:
 
 
 def run_allocator(portfolio_name: str, mode: str = "capital") -> Path:
+    """Build instrument targets for a portfolio with mode-scoped config selection.
+
+    Research beta knobs are read from `systems/<mode>/config.yaml`.
+    Capital behavior stays deterministic unless a `beta_engine` section is
+    explicitly configured.
+    """
     hierarchy = load_hierarchy()
     valid_node_ids = _flatten_node_ids(hierarchy)
 
@@ -46,7 +93,8 @@ def run_allocator(portfolio_name: str, mode: str = "capital") -> Path:
 
     # Top-down allocation logic is isolated in portfolio_models.
     # Bottom-up implementation mapping remains in instrument_mapping and allocator routing.
-    node_weights, allocation_mode = derive_node_weights(defs)
+    beta_cfg = _load_mode_beta_engine_config(mode)
+    node_weights, allocation_mode = _dispatch_weighting_method(defs, beta_cfg)
 
     mapping_for_nodes = mapping_df[mapping_df["node_id"].isin(node_weights.keys())].copy()
     if mapping_for_nodes.empty:
