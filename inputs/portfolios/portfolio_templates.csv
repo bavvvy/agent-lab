@@ -1,0 +1,6 @@
+portfolio_id,mode,name,rebalance
+beta_60_40,capital,beta_engine_60_40,monthly
+beta_70_30,capital,beta_70_30,monthly
+all_weather_v1,capital,all_weather_v1,monthly
+mcd_bac_50_50_20y,capital,mcd_bac_50_50_20y,monthly
+sandbox,research,sandbox,monthly

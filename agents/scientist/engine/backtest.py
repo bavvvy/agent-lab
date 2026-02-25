@@ -24,7 +24,10 @@ from enforcement.io_guard import assert_not_forbidden_identity_root_file, assert
 _SCIENTIST_ROOT = Path(__file__).resolve().parents[1]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SYSTEMS_ROOT = _REPO_ROOT / "systems"
-DATA_PATH = _REPO_ROOT / "inputs" / "prices" / "prices_master.parquet"
+DATA_PATH = _REPO_ROOT / "inputs" / "market_data" / "prices_master.parquet"
+PORTFOLIO_TEMPLATES_PATH = _REPO_ROOT / "inputs" / "portfolios" / "portfolio_templates.csv"
+PORTFOLIO_WEIGHTS_PATH = _REPO_ROOT / "inputs" / "portfolios" / "portfolio_weights.csv"
+PORTFOLIO_METADATA_PATH = _REPO_ROOT / "inputs" / "portfolios" / "portfolio_metadata.csv"
 SYMBOL_MAP = {"AGG": "TLT"}
 
 
@@ -37,10 +40,6 @@ def _resolve_system_mode(mode: str) -> str:
 
 def _outputs_mode_root(mode: str) -> Path:
     return _REPO_ROOT / "outputs" / _resolve_system_mode(mode)
-
-
-def _portfolio_dir(mode: str) -> Path:
-    return _SYSTEMS_ROOT / _resolve_system_mode(mode) / "portfolios"
 
 
 def _config_path(mode: str) -> Path:
@@ -71,44 +70,61 @@ def _to_engine_symbol(ticker: str) -> str:
     return SYMBOL_MAP.get(ticker, ticker)
 
 
-def _load_portfolio(strategy: str, mode: str = "capital") -> tuple[dict, Path]:
-    portfolio_dir = _portfolio_dir(mode)
-    candidate_names = [strategy, strategy.replace("-", "_")]
-    path = None
-    for n in candidate_names:
-        p = portfolio_dir / f"{n}.yaml"
-        if p.exists():
-            path = p
-            break
+def load_portfolio_from_csv(portfolio_id: str, mode: str = "capital") -> tuple[dict, Path]:
+    mode = _resolve_system_mode(mode)
+    canonical_id = portfolio_id.replace("-", "_")
 
-    if path is None:
-        for p in sorted(portfolio_dir.glob("*.yaml")):
-            payload = yaml.safe_load(p.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                nm = str(payload.get("name", "")).replace("-", "_")
-                if nm == strategy.replace("-", "_"):
-                    path = p
-                    break
+    if not PORTFOLIO_TEMPLATES_PATH.exists():
+        raise FileNotFoundError(f"Missing portfolio templates CSV: {PORTFOLIO_TEMPLATES_PATH}")
+    if not PORTFOLIO_WEIGHTS_PATH.exists():
+        raise FileNotFoundError(f"Missing portfolio weights CSV: {PORTFOLIO_WEIGHTS_PATH}")
 
-    if path is None:
-        raise FileNotFoundError(f"Portfolio YAML not found for strategy '{strategy}'")
+    templates = pd.read_csv(PORTFOLIO_TEMPLATES_PATH)
+    weights = pd.read_csv(PORTFOLIO_WEIGHTS_PATH)
 
-    portfolio = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(portfolio, dict):
-        raise ValueError("Portfolio file must define a mapping")
-    if "name" not in portfolio or "tickers" not in portfolio or "rebalance" not in portfolio:
-        raise ValueError("Portfolio YAML requires: name, tickers, rebalance")
+    sel = templates[(templates["mode"] == mode) & (templates["portfolio_id"].astype(str).str.replace("-", "_", regex=False) == canonical_id)]
+    if sel.empty:
+        raise FileNotFoundError(f"Portfolio template not found for portfolio_id '{portfolio_id}' in mode '{mode}'")
 
-    tickers = portfolio["tickers"]
-    if not isinstance(tickers, dict) or not tickers:
-        raise ValueError("tickers must be a non-empty mapping")
+    row = sel.iloc[0]
+    portfolio_name = str(row["name"])
+    rebalance = str(row["rebalance"])
+
+    wsel = weights[(weights["mode"] == mode) & (weights["portfolio_id"].astype(str).str.replace("-", "_", regex=False) == canonical_id)]
+    if wsel.empty:
+        raise ValueError(f"No weights found for portfolio_id '{portfolio_id}' in mode '{mode}'")
+
+    tickers = {str(r["ticker"]): float(r["weight"]) for _, r in wsel.iterrows()}
 
     total = float(sum(float(v) for v in tickers.values()))
     if abs(total - 1.0) > 1e-9:
         raise ValueError(f"Portfolio weights must sum to 1.0 (got {total})")
 
-    portfolio["tickers"] = {str(k): float(v) for k, v in tickers.items()}
-    return portfolio, path
+    portfolio: dict = {
+        "id": str(row["portfolio_id"]),
+        "name": portfolio_name,
+        "tickers": tickers,
+        "rebalance": rebalance,
+    }
+
+    if PORTFOLIO_METADATA_PATH.exists():
+        meta = pd.read_csv(PORTFOLIO_METADATA_PATH)
+        msel = meta[(meta["mode"] == mode) & (meta["portfolio_id"].astype(str).str.replace("-", "_", regex=False) == canonical_id)]
+        for _, mr in msel.iterrows():
+            key = str(mr["key"])
+            value = mr["value"]
+            if key == "lookback_years":
+                try:
+                    value = int(float(value))
+                except Exception:
+                    pass
+            portfolio[key] = value
+
+    return portfolio, PORTFOLIO_TEMPLATES_PATH
+
+
+def _load_portfolio(strategy: str, mode: str = "capital") -> tuple[dict, Path]:
+    return load_portfolio_from_csv(strategy, mode=mode)
 
 
 def _load_validated_prices(required_columns: list[str]) -> tuple[pd.DataFrame, dict[str, str | int]]:

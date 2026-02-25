@@ -1,0 +1,14 @@
+portfolio_id,mode,ticker,weight
+beta_60_40,capital,SPY,0.6
+beta_60_40,capital,AGG,0.4
+beta_70_30,capital,SPY,0.7
+beta_70_30,capital,AGG,0.3
+all_weather_v1,capital,SPY,0.25
+all_weather_v1,capital,TLT,0.375
+all_weather_v1,capital,TIP,0.125
+all_weather_v1,capital,GLD,0.125
+all_weather_v1,capital,DBC,0.125
+mcd_bac_50_50_20y,capital,MCD,0.5
+mcd_bac_50_50_20y,capital,BAC,0.5
+sandbox,research,SPY,0.5
+sandbox,research,AGG,0.5

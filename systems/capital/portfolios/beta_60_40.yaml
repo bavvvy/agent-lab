@@ -1,5 +1,0 @@
-name: beta_engine_60_40
-tickers:
-  SPY: 0.6
-  AGG: 0.4
-rebalance: monthly

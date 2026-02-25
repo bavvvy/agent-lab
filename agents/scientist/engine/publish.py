@@ -8,7 +8,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from policy import enforce_head_parity, ensure_timestamped_report_name, report_rows_for_index
+from enforcement.policy import enforce_head_parity, ensure_timestamped_report_name, report_rows_for_index
 
 
 def run(cmd: list[str], cwd: Path) -> str:
@@ -107,10 +107,9 @@ def main() -> int:
     if strategy == "sandbox":
         raise RuntimeError("Sandbox cannot be published.")
 
-    portfolio_dir = repo_root / "systems" / args.mode / "portfolios"
-    portfolio_path = portfolio_dir / f"{strategy}.yaml"
-    if not portfolio_path.exists():
-        raise FileNotFoundError(f"Portfolio not found: {portfolio_path}")
+    from engine.backtest import load_portfolio_from_csv
+
+    portfolio, _portfolio_source_path = load_portfolio_from_csv(strategy, mode=args.mode)
 
     output_dataset_path = workspace / "output" / f"{strategy}.parquet"
     subprocess.check_call(
@@ -128,7 +127,6 @@ def main() -> int:
         env={**os.environ, "PYTHONPATH": "."},
     )
 
-    portfolio = __import__("yaml").safe_load(portfolio_path.read_text(encoding="utf-8"))
     strategy_slug = str(portfolio.get("name", strategy)).replace("_", "-").lower()
     runs_dir = repo_root / "outputs" / mode / "runs"
     source_path = runs_dir / f"{strategy_slug}.html"

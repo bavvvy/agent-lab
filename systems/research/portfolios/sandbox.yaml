@@ -1,5 +1,0 @@
-name: sandbox
-tickers:
-  SPY: 0.5
-  AGG: 0.5
-rebalance: monthly

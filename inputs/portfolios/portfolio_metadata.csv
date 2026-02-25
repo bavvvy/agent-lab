@@ -1,0 +1,3 @@
+portfolio_id,mode,key,value
+all_weather_v1,capital,description,"Unlevered static All Weather v1. Regime buckets allocated 25% each, then collapsed into final capital weights."
+mcd_bac_50_50_20y,capital,lookback_years,20

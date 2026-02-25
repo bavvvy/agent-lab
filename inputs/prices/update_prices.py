@@ -19,8 +19,9 @@ SOURCE = "yfinance"
 AUTO_ADJUST = True
 START_DATE = pd.Timestamp("2000-01-01")
 DATA_DIR = Path(__file__).resolve().parent
-DATA_PATH = DATA_DIR / "prices_master.parquet"
-META_PATH = DATA_DIR / "prices_master_meta.json"
+MARKET_DATA_DIR = DATA_DIR.parent / "market_data"
+DATA_PATH = MARKET_DATA_DIR / "prices_master.parquet"
+META_PATH = MARKET_DATA_DIR / "prices_master_meta.json"
 
 
 def _utc_today_date() -> pd.Timestamp:
@@ -71,6 +72,7 @@ def _load_existing() -> pd.DataFrame | None:
 
 
 def _save_dataset(df: pd.DataFrame) -> None:
+    MARKET_DATA_DIR.mkdir(parents=True, exist_ok=True)
     assert_root_write_allowed(DATA_PATH)
     assert_not_forbidden_identity_root_file(DATA_PATH)
     df_to_save = df.copy()

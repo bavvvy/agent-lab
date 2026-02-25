@@ -1,5 +1,0 @@
-name: beta_70_30
-tickers:
-  SPY: 0.7
-  AGG: 0.3
-rebalance: monthly
