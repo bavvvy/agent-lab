@@ -217,11 +217,19 @@ When the phrase `generate bootstrap` is received, the system must:
 When the phrase `refresh constitution` is received, the system must:
 1. Inspect live repository state at repo root.
 2. Derive architecture strictly from current repository state.
-3. Update `control/SYSTEM.md` to reflect current structure and invariants.
-4. Do NOT run npm.
-5. Do NOT modify OpenClaw runtime.
-6. Do NOT modify engine or enforcement logic.
-7. Do NOT regenerate bootstrap automatically.
+3. Update `control/SYSTEM.md` to reflect current layered architecture and invariants.
+4. Reconcile outdated references.
+5. Regenerate `./BOOTSTRAP_EXPORT.txt` at repository root.
+6. Do NOT run npm.
+7. Do NOT upgrade OpenClaw.
+8. Do NOT modify runtime.
+9. Do NOT modify portfolio logic.
+10. Do NOT modify enforcement.
+11. Do NOT change systems config.
+12. Do NOT modify `agents/*`.
+13. Do NOT modify `systems/*`.
+14. Do NOT delete files.
+15. Do NOT automatically commit; print summary and diff preview only.
 
 ### regenerate bootstrap export
 When the phrase `regenerate bootstrap export` is received, the system must:
@@ -235,3 +243,33 @@ When the phrase `refresh constitution and bootstrap` is received, the system mus
 1. Run `refresh constitution`.
 2. Then run `regenerate bootstrap export`.
 3. Do NOT perform runtime updates.
+
+### audit usage <path_or_name>
+When the phrase `audit usage <path_or_name>` is received, the system must run a read-only structural reference audit.
+
+Behavior:
+1. Recursively search repository references for the provided path or filename.
+2. Exclude `.venv`, `__pycache__`, `outputs/`, `archive/`, and data files from scan targets.
+3. Report:
+   - Files referencing the target
+   - Line numbers
+   - Total reference count
+4. If no references are found, mark `Potentially unused`.
+5. If target is a folder, also check and report:
+   - Empty directories
+   - Duplicate filenames elsewhere in repository
+   - Shadowed path patterns (example: `inputs/prices` vs `data/market`)
+6. Print concise structured output exactly in this form:
+   - `AUDIT REPORT`
+   - `Target:`
+   - `Reference count:`
+   - `Referenced in:`
+   - `Unused flag:`
+   - `Structural notes:`
+
+Constraints:
+- Non-mutating diagnostic only.
+- No file mutations.
+- No deletions.
+- No auto-commits.
+- No bootstrap regeneration.

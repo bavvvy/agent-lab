@@ -31,6 +31,23 @@ This file is subordinate to control/*. In case of conflict, control/ prevails.
   - Prints full saved path + first 40 lines.
   - Does not modify `SYSTEM.md`, bootstrap, or agents; does not run npm; does not auto-commit.
 
+- Trigger phrase: `audit usage <path_or_name>` (case-insensitive match accepted).
+- Type: non-mutating diagnostic command (read-only).
+- Behavior:
+  - Recursively scans repository references to the target path/name.
+  - Excludes scan roots: `.venv`, `__pycache__`, `outputs/`, `archive/`, and data files.
+  - Reports file paths, line numbers, and total reference count.
+  - If no matches: flags as `Potentially unused`.
+  - If target is a folder: also reports empty directories, duplicate filenames, and shadowed path patterns.
+  - Prints concise structured output:
+    - `AUDIT REPORT`
+    - `Target:`
+    - `Reference count:`
+    - `Referenced in:`
+    - `Unused flag:`
+    - `Structural notes:`
+  - Does not mutate files, delete files, regenerate bootstrap, or auto-commit.
+
 ## Constitution Maintenance Commands
 - `refresh constitution`
   - Update `control/SYSTEM.md` to match current layered architecture/invariants and reconcile outdated references.
