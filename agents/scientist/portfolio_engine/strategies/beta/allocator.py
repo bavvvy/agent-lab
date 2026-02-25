@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from hierarchy_loader import load_hierarchy
 from instrument_mapping import load_instrument_mapping
 from portfolio_models import derive_node_weights, load_portfolio_definitions
-from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
+from enforcement.io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 
 def _repo_root() -> Path:

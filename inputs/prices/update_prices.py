@@ -12,7 +12,7 @@ from pandas.tseries.offsets import BDay
 SCIENTIST_ROOT = Path(__file__).resolve().parents[2] / "agents" / "scientist"
 sys.path.insert(0, str(SCIENTIST_ROOT))
 
-from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
+from enforcement.io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 TICKERS = ["SPY", "AGG", "TLT", "TIP", "GLD", "DBC"]
 SOURCE = "yfinance"

@@ -18,8 +18,8 @@ import pandas as pd
 import yaml
 
 from portfolio_engine.engine import PortfolioEngine
-from report_template import render_strategy_report
-from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
+from templates.report_template import render_strategy_report
+from enforcement.io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 _SCIENTIST_ROOT = Path(__file__).resolve().parents[1]
 _REPO_ROOT = Path(__file__).resolve().parents[3]

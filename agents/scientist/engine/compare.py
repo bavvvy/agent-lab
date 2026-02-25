@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 import backtest as bt
-from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
+from enforcement.io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 
 
 def fig_to_base64(fig) -> str:
