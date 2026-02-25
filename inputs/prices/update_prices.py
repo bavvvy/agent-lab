@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
 
 import pandas as pd
 import yfinance as yf
 from pandas.tseries.offsets import BDay
+
+SCIENTIST_ROOT = Path(__file__).resolve().parents[2] / "agents" / "scientist"
+sys.path.insert(0, str(SCIENTIST_ROOT))
 
 from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_allowed
 

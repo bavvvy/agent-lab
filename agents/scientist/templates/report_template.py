@@ -98,7 +98,7 @@ def render_strategy_report(
 <ul>
 <li>Asset returns: simple close-to-close returns, P_t / P_{{t-1}} - 1.</li>
 <li>Rebalancing: engine produces target holdings monthly; trades executed on rebalance months only.</li>
-<li>Data source: local canonical dataset from `data/prices_master.parquet` (no network calls).</li>
+<li>Data source: local canonical dataset from `inputs/prices/prices_master.parquet` (no network calls).</li>
 <li>Assumptions: no taxes, no transaction costs, no slippage, no leverage/borrow modeling beyond engine behavior.</li>
 </ul>
 </div></body></html>

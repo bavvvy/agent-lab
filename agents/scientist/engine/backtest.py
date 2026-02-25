@@ -24,7 +24,7 @@ from io_guard import assert_not_forbidden_identity_root_file, assert_root_write_
 _SCIENTIST_ROOT = Path(__file__).resolve().parents[1]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SYSTEMS_ROOT = _REPO_ROOT / "systems"
-DATA_PATH = _SCIENTIST_ROOT / "data" / "prices_master.parquet"
+DATA_PATH = _REPO_ROOT / "inputs" / "prices" / "prices_master.parquet"
 SYMBOL_MAP = {"AGG": "TLT"}
 
 
@@ -113,7 +113,7 @@ def _load_portfolio(strategy: str, mode: str = "capital") -> tuple[dict, Path]:
 
 def _load_validated_prices(required_columns: list[str]) -> tuple[pd.DataFrame, dict[str, str | int]]:
     if not DATA_PATH.exists():
-        raise FileNotFoundError("prices_master.parquet not found. Run data/update_prices.py first.")
+        raise FileNotFoundError("prices_master.parquet not found. Run inputs/prices/update_prices.py first.")
 
     df = pd.read_parquet(DATA_PATH)
     if not set(required_columns).issubset(df.columns):
