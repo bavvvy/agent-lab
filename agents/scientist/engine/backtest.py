@@ -129,7 +129,7 @@ def _load_portfolio(strategy: str, mode: str = "capital") -> tuple[dict, Path]:
 
 def _load_validated_prices(required_columns: list[str]) -> tuple[pd.DataFrame, dict[str, str | int]]:
     if not DATA_PATH.exists():
-        raise FileNotFoundError("prices_master.parquet not found. Run inputs/prices/update_prices.py first.")
+        raise FileNotFoundError("prices_master.parquet not found. Expected canonical market data at data/market/prices_master.parquet.")
 
     df = pd.read_parquet(DATA_PATH)
     if not set(required_columns).issubset(df.columns):
