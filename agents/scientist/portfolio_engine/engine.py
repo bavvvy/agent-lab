@@ -5,6 +5,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict
 
+import pandas as pd
+
 import yaml
 
 from .compat import normalize_legacy_config
@@ -83,3 +85,61 @@ class PortfolioEngine:
             "should_rebalance": should_rebalance,
             "trades": trades,
         }
+
+
+def run_portfolio_pipeline(
+    strategy_name: str,
+    mode: str,
+    publish: bool = False,
+    output_dataset_path: str | None = None,
+):
+    """Explicit orchestration skeleton for template -> strategy -> weights -> returns.
+
+    This function intentionally reuses existing backtest flow and math.
+    """
+    from engine.backtest import (
+        _config_path,
+        _load_portfolio,
+        _load_validated_prices,
+        _simulate_strategy,
+        run_backtest,
+    )
+    from portfolio_engine.modules.results import PortfolioResult
+    from portfolio_engine.strategies.beta.strategy import BetaStrategy
+
+    # 1) Load config
+    config_path = _config_path(mode)
+    engine = PortfolioEngine.from_yaml(str(config_path))
+
+    # 2) Load template (portfolio definition)
+    portfolio_template, _portfolio_path = _load_portfolio(strategy_name, mode=mode)
+
+    # 3) Build strategy wrapper
+    strategy = BetaStrategy(name=str(portfolio_template["name"]), template=portfolio_template)
+
+    # 4) Generate weights (skeleton step; execution math still comes from existing engine)
+    template_weights = strategy.generate_weights()
+
+    # 5) Generate returns via existing simulation utilities
+    tickers = list(portfolio_template["tickers"].keys())
+    prices_daily, _stats = _load_validated_prices(tickers)
+    prices = prices_daily.groupby(prices_daily.index.to_period("M")).tail(1).copy()
+    simulated_df, _weights_df, _turnover = _simulate_strategy(engine, portfolio_template, prices)
+    returns = list(pd.Series(simulated_df["monthly_return"]).astype(float).tolist())
+
+    # 6) Wrap result
+    result = PortfolioResult(
+        name=strategy.name,
+        weights=template_weights,
+        returns=returns,
+    )
+
+    # 7) Optionally publish through existing backtest path
+    run_backtest(
+        strategy=strategy_name,
+        publish=publish,
+        output_dataset_path=output_dataset_path,
+        mode=mode,
+    )
+
+    return result
