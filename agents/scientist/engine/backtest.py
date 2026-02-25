@@ -24,7 +24,7 @@ from enforcement.io_guard import assert_not_forbidden_identity_root_file, assert
 _SCIENTIST_ROOT = Path(__file__).resolve().parents[1]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SYSTEMS_ROOT = _REPO_ROOT / "systems"
-DATA_PATH = _REPO_ROOT / "inputs" / "market_data" / "prices_master.parquet"
+DATA_PATH = _REPO_ROOT / "data" / "market" / "prices_master.parquet"
 PORTFOLIO_TEMPLATES_PATH = _REPO_ROOT / "inputs" / "portfolios" / "portfolio_templates.csv"
 PORTFOLIO_WEIGHTS_PATH = _REPO_ROOT / "inputs" / "portfolios" / "portfolio_weights.csv"
 PORTFOLIO_METADATA_PATH = _REPO_ROOT / "inputs" / "portfolios" / "portfolio_metadata.csv"

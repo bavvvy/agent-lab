@@ -19,7 +19,8 @@ SOURCE = "yfinance"
 AUTO_ADJUST = True
 START_DATE = pd.Timestamp("2000-01-01")
 DATA_DIR = Path(__file__).resolve().parent
-MARKET_DATA_DIR = DATA_DIR.parent / "market_data"
+REPO_ROOT = DATA_DIR.parents[1]
+MARKET_DATA_DIR = REPO_ROOT / "data" / "market"
 DATA_PATH = MARKET_DATA_DIR / "prices_master.parquet"
 META_PATH = MARKET_DATA_DIR / "prices_master_meta.json"
 
