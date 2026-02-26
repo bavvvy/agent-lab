@@ -1,121 +1,411 @@
 --- SYSTEM.md ---
 # SYSTEM.md
 
-## Purpose of Agent Lab
-Agent Lab is a deterministic local research and reporting workspace for portfolio strategy development, validation, and publication to static web reports.
+## Architecture version
+- 2.2
 
-## Current architecture overview
-- Core engine lives in `scientist-workspace/portfolio_engine/`.
-- Backtest/report rendering lives in `scientist-workspace/backtest.py`.
-- Publication orchestration is centralized in `scientist-workspace/publish.py`.
-- Published artifacts are served from repository-root `reports/`.
+## Purpose
+Agent Lab is a deterministic multi-agent portfolio research and publication system with a constitutional control-plane, system-mode orchestration layer, and execution agents.
 
-## Directory structure summary
-- `scientist-workspace/` — strategy code, backtest, publish workflow, tests.
-- `reports/` — public HTML reports + `index.html` dashboard.
-- `reports/archive/` — immutable timestamped report snapshots.
-- `archive/` — local internal archive (not publication target).
+## Layered architecture (canonical)
+1. `control/` — constitutional layer (authority, invariants, governance)
+2. `systems/` — system mode layer (`capital` vs `research` orchestration/config)
+3. `agents/` — execution layer (runtime code paths, wrappers, and workflows)
+4. `contracts/` — structured request/brief exchange layer between intake and execution
+5. `inputs/` — human-editable input definitions (taxonomy + portfolio CSV templates)
+6. `data/` — canonical market data layer (read/write by ingestion + read by execution)
+7. `outputs/` — mode-scoped artifact layer
 
-## Report publication workflow
-`scientist-workspace/publish.py` is the sole publication mechanism:
-1. Runs deterministic `backtest.py` for a supported strategy.
-2. Ensures report is written to `reports/<strategy>.html`.
-3. Creates immutable timestamped version in `reports/`.
-4. Regenerates `reports/index.html`.
-5. Stages, commits, pushes to `origin/main`.
-6. Verifies local/remote HEAD match.
+Higher layer prevails on conflict.
 
-## Report versioning rule
-Timestamped report filenames must follow:
-`YYYY-MM-DD_HH-MM_<strategy>.html` (UTC minute precision).
+## Canonical topology
+- `control/` — control-plane documentation, invariants, and configuration context.
+- `systems/` — mode-scoped orchestration/config:
+  - `systems/capital/config.yaml`
+  - `systems/research/config.yaml`
+- `agents/node/` — intake/packaging agent and schema validation.
+- `agents/scientist/` — scientist execution pipeline (cli, engine, enforcement, templates, governance, portfolio_engine).
+- `inputs/` — human-editable input definitions:
+  - `inputs/taxonomy/`
+  - `inputs/portfolios/`
+  - legacy `inputs/portfolio_definitions.csv` (still consumed by beta strategy internals)
+- `data/` — canonical market data:
+  - `data/market/prices_master.parquet`
+  - `data/market/prices_master_meta.json`
+- `outputs/` — mode-scoped runtime/publication artifacts.
+- `contracts/` — generated machine contracts and human briefs.
 
-## Index rule
-`reports/index.html` uses filename timestamp prefix as source of truth for:
-- Published (UTC) display
-- Sort order (newest first)
-Non-conforming names are treated as `Legacy`.
+## System mode invariants
+- Capital system must not depend on research system.
+- Research system must not mutate or redefine capital doctrine.
+- Outputs are scoped by mode under `outputs/<mode>/...`.
+- Agents do not own portfolio doctrine; doctrine is input-scoped under `inputs/portfolios/` and constitutionally constrained by `control/`.
 
-## Public URL structure
-- Dashboard: `https://bavvvy.github.io/agent-lab/reports/`
-- Report page: `https://bavvvy.github.io/agent-lab/reports/<filename>.html`
+## Control-plane / execution separation
+- Constitutional definitions live under `control/`.
+- System-mode runtime configuration lives under `systems/`.
+- Structured machine requests and human briefs live under `contracts/`.
+- Human-editable portfolio/taxonomy inputs live under `inputs/`.
+- Canonical market datasets live under `data/`.
+- Execution code lives under `agents/`.
+- Publication/runtime artifacts live under `outputs/`.
 
-## Guardrails (modifiable vs protected paths)
-Modifiable:
-- `scientist-workspace/`
-- `reports/`
+## Mode-scoped publication/output paths (canonical)
+For each mode (`capital`, `research`):
+- Runs: `outputs/<mode>/runs/`
+- Archive: `outputs/<mode>/archive/`
+- Runtime: `outputs/<mode>/runtime/`
 
-Protected / handle with care:
+Legacy shared output paths may exist historically under `outputs/capital/legacy/` and are retained as archived artifacts.
+
+## Publication entrypoint
+- `agents/scientist/publish.py` is the publication entrypoint wrapper.
+- Engine implementation lives at `agents/scientist/engine/publish.py`.
+
+## Deterministic execution model
+- Backtest execution is deterministic from local inputs and system mode configuration.
+- Publish workflow invokes backtest generation before publication actions.
+
+## Report naming invariant
+Versioned report filename format is:
+- `YYYY-MM-DD_HH-MM_<strategy>.html`
+- Timestamp is UTC minute precision.
+
+## Index ordering invariant
+- Index ordering and displayed publish time are derived from filename timestamps.
+- Non-conforming filenames are treated as legacy rows by policy utilities.
+
+## Publish workflow invariants
+In scientist publish flow:
+1. Resolve strategy + mode and validate allowed publication scope.
+2. Execute backtest generation for target strategy.
+3. Create timestamped report in `outputs/<mode>/runs/`.
+4. Ensure `outputs/<mode>/archive/` exists and archive prior timestamped versions.
+5. Regenerate `outputs/<mode>/runs/index.html` from filename timestamps.
+6. Stage repository changes with `git add -A`.
+7. If staged changes exist, run pytest gate before push.
+8. Commit and push to `origin/main`.
+9. Enforce HEAD parity (`HEAD == origin/main`).
+
+### Timestamp-Only Report Invariant
+Only report files matching the format:
+
+`YYYY-MM-DD_HH-MM_<strategy>.html`
+
+may exist in active mode run roots.
+
+Non-timestamped report files such as:
+
+`<strategy>.html`
+
+are prohibited and must not be created by the publish pipeline.
+
+The index must derive entries exclusively from timestamped filenames.
+If non-timestamped files are detected, this constitutes architectural drift and must be corrected.
+
+## Immutable Root Policy
+Repository root is immutable.
+
+- Bootstrap export artifact must exist ONLY at `control/BOOTSTRAP_EXPORT.txt`
+- Identity artifacts must exist ONLY in `control/`
+- Runtime layers may not write to repository root
+
+## Repository Identity Invariant
+The following files must NOT exist at repository root:
+- `AGENTS`
+- `BOOTSTRAP`
+- `IDENTITY`
+- `SOUL`
+- `TOOLS`
+- `USER`
+- `HEARTBEAT`
+- `AGENTS.md`
+- `BOOTSTRAP.md`
+- `IDENTITY.md`
+- `SOUL.md`
+- `TOOLS.md`
+- `USER.md`
+- `HEARTBEAT.md`
+
+Identity files are permitted ONLY in:
+- `control/`
+- agent-local governance subfolders (e.g., `agents/*/governance/`)
+
+If root-level identity files are detected, this constitutes architectural drift and must be corrected before any publish action.
+
+## Node Capability Specification (Passive Mode)
+Purpose:
+Node is the external interface layer. It ingests unstructured human instructions (e.g., from Discord) and produces structured contracts for execution by Scientist.
+
+Scope (Allowed):
+- Ingest natural language instructions.
+- Validate payload structure.
+- Generate structured JSON requests.
+- Generate human-readable briefs.
+- Write ONLY to:
+  - `contracts/requests/`
+  - `contracts/briefs/`
+- Node must output `capital_input` objects conforming to `contracts/schema/capital_input_schema.json`.
+- Node must not contain allocation logic.
+- Cash / beta / alpha doctrine is execution-derived from input definitions (`inputs/portfolios/`) and control constraints.
+
+Explicitly Forbidden:
+- Modifying `control/`
+- Modifying `agents/scientist/`
+- Modifying `outputs/`
+- Calling `publish.py`
+- Executing backtests directly
+- Updating `system_config.yaml`
+- Introducing new top-level directories
+- Writing to repository root
+
+Execution Boundary:
+- Scientist must consume structured contracts only.
+- Scientist must not parse raw Discord messages.
+
+Autonomy Level:
+Node operates in Passive Mode:
+- It writes contracts.
+- It does NOT trigger execution automatically.
+
+## Guardrails
+### Modifiable
+- `control/`
+- `systems/`
+- `agents/node/`
+- `agents/scientist/`
+- `contracts/`
+- `inputs/`
+- `data/`
+
+### Protected / caution
 - `.git/`
-- `archive/`
+- `outputs/` (artifact space; modify only via execution workflows unless explicitly requested)
 
-## Non-negotiable invariants
-- Publication must maintain HEAD parity (`git rev-parse HEAD` == `git rev-parse origin/main`) after push.
-- Published versioned reports must follow `YYYY-MM-DD_HH-MM_<strategy>.html`.
-- Dashboard ordering/published timestamp must derive from filename timestamp prefix (UTC), not git commit date.
-- `scientist-workspace/publish.py` remains the sole publication mechanism.
+### Execution Write Scope Safeguard
+Default write targets are restricted to:
+- `control/`
+- `systems/`
+- `agents/node/`
+- `agents/scientist/`
+- `inputs/`
+- `data/`
+- `contracts/`
 
-Invariant-change override phrase (required verbatim):
-`OVERRIDE_INVARIANTS: I ACCEPT RISK`
+Repository-root writes are prohibited.
 
-MS must refuse invariant changes unless the override phrase is explicitly present in the request.
+### Node Write Guardrail
+Node write permissions are restricted to:
+- `contracts/requests/`
+- `contracts/briefs/`
 
-## High-level evolution roadmap
-1. Add multi-strategy support in `publish.py` with explicit strategy registry.
-2. Add deterministic data adapters (local snapshots) for non-synthetic backtests.
-3. Expand report schema (factor attribution, exposures, rolling risk).
-4. Add CI validation for report generation and index integrity.
-5. Introduce strict config/version contracts across backtest and publish layers.
+Any attempt to write elsewhere constitutes architectural violation.
 
+## Layered Beta Architecture Invariant
+- Hierarchy layer: structure only
+- Instrument Mapping layer: implementation mapping only
+- Portfolio Definitions layer: allocation definitions only
+- Portfolio Models layer: allocation logic only
+- Allocator layer: orchestration only
+
+## Multi-agent responsibility summary
+- Node agent (`agents/node/`) validates and packages structured requests into contracts.
+- Scientist agent (`agents/scientist/`) executes portfolio analytics and publication workflows.
+- Scientist consumes structured inputs and derives coherent cash / beta / alpha allocations deterministically.
+- Control-plane (`control/`) defines architecture and invariants without replacing runtime truth.
+
+## Control Commands
+### generate bootstrap
+When the phrase `generate bootstrap` is received, the system must:
+1. Overwrite `control/BOOTSTRAP_EXPORT.txt`.
+2. Insert full unmodified contents of:
+   - `control/SYSTEM.md`
+   - `control/CONTEXT_BOOTSTRAP.md`
+   - `control/system_config.yaml`
+3. Preserve formatting exactly.
+4. Confirm only `control/BOOTSTRAP_EXPORT.txt` changed.
+5. Commit with message:
+   - `Regenerate portable control-plane bootstrap export`
+6. Push to `origin main`.
+7. Confirm HEAD parity `TRUE`.
+
+### refresh constitution
+When the phrase `refresh constitution` is received, the system must:
+1. Inspect live repository state at repo root.
+2. Derive architecture strictly from current repository state.
+3. Update `control/SYSTEM.md` to reflect current layered architecture and invariants.
+4. Reconcile outdated references.
+5. Regenerate `control/BOOTSTRAP_EXPORT.txt`.
+6. Do NOT run npm.
+7. Do NOT upgrade OpenClaw.
+8. Do NOT modify runtime.
+9. Do NOT modify portfolio logic.
+10. Do NOT modify enforcement.
+11. Do NOT change systems config.
+12. Do NOT modify `agents/*`.
+13. Do NOT modify `systems/*`.
+14. Do NOT delete files.
+15. Do NOT automatically commit; print summary and diff preview only.
+
+### regenerate bootstrap export
+When the phrase `regenerate bootstrap export` is received, the system must:
+1. Generate `control/BOOTSTRAP_EXPORT.txt`.
+2. Use current `control/SYSTEM.md` and current repository structure references.
+3. Do NOT modify `control/SYSTEM.md`.
+4. Do NOT modify OpenClaw runtime.
+
+### refresh constitution and bootstrap
+When the phrase `refresh constitution and bootstrap` is received, the system must:
+1. Run `refresh constitution`.
+2. Then run `regenerate bootstrap export`.
+3. Ensure the only bootstrap artifact written is `control/BOOTSTRAP_EXPORT.txt`.
+4. Do NOT perform runtime updates.
+
+### audit usage <path_or_name>
+When the phrase `audit usage <path_or_name>` is received, the system must run a read-only structural reference audit.
+
+Behavior:
+1. Recursively search repository references for the provided path or filename.
+2. Exclude `.venv`, `__pycache__`, `outputs/`, `archive/`, and data files from scan targets.
+3. Report:
+   - Files referencing the target
+   - Line numbers
+   - Total reference count
+4. If no references are found, mark `Potentially unused`.
+5. If target is a folder, also check and report:
+   - Empty directories
+   - Duplicate filenames elsewhere in repository
+   - Shadowed path patterns (example: `inputs/prices` vs `data/market`)
+6. Print concise structured output exactly in this form:
+   - `AUDIT REPORT`
+   - `Target:`
+   - `Reference count:`
+   - `Referenced in:`
+   - `Unused flag:`
+   - `Structural notes:`
+
+Constraints:
+- Non-mutating diagnostic only.
+- No file mutations.
+- No deletions.
+- No auto-commits.
+- No bootstrap regeneration.
 
 --- CONTEXT_BOOTSTRAP.md ---
 # CONTEXT_BOOTSTRAP.md
 
 ## Architecture version
-- 1.0
+- 2.1
 
-## System purpose
-- Deterministic portfolio research/backtest reporting pipeline.
-- Publish static reports to `reports/` for GitHub Pages delivery.
+## High-level architecture
+Agent Lab uses a layered architecture with explicit constitutional, system-mode, execution, shared-input, and artifact layers.
 
-## Publication workflow summary
-- Use `scientist-workspace/publish.py` (single publication entrypoint).
-- Run backtest for strategy, regenerate `reports/index.html`, commit/push, verify HEAD parity.
+- Constitutional layer: `control/`
+- System mode layer: `systems/` (`capital/`, `research/`)
+- Execution layer: `agents/node/`, `agents/scientist/`
+- Shared data layer: `inputs/`
+- Artifact layer: `outputs/` (mode-scoped)
+- Contracts plane: `contracts/`
 
-## Naming conventions
-- Strategy slug: hyphenated (e.g., `beta-engine-60-40`).
-- Versioned report: `YYYY-MM-DD_HH-MM_<strategy>.html` (UTC).
-- Dashboard: `reports/index.html`.
+## Responsibility boundaries
+### control/
+- Owns architecture definitions, invariants, and configuration context.
+- Must describe reality of repository state; it does not execute workloads.
+
+### systems/
+- Owns mode-scoped orchestration/config and portfolio definitions.
+- `systems/capital/` is canonical for capital runtime behavior.
+- `systems/research/` is isolated research-mode configuration.
+
+### agents/node/
+- Owns structured payload validation and request packaging.
+- Produces contracts in `contracts/requests/` and briefs in `contracts/briefs/`.
+
+### agents/scientist/
+- Owns deterministic backtest execution wrappers and engine runtime.
+- Owns comparative report generation.
+- Owns publication orchestration runtime.
+
+### outputs/
+- Owns runtime and publication artifacts.
+- Artifacts are mode-scoped under `outputs/<mode>/...`.
+
+## Publication/output model
+- Entrypoint wrapper: `agents/scientist/publish.py`
+- Engine implementation: `agents/scientist/engine/publish.py`
+- Active runs root: `outputs/<mode>/runs/`
+- Active archive root: `outputs/<mode>/archive/`
+- Active runtime root: `outputs/<mode>/runtime/`
+- Timestamped artifact format: `YYYY-MM-DD_HH-MM_<strategy>.html` (UTC)
+- Index ordering source: filename timestamp parsing
+
+## Invariants
+1. Publication writes timestamped reports under `outputs/<mode>/runs/`.
+2. Archive target is `outputs/<mode>/archive/` and must be created if missing.
+3. Runtime artifacts are mode-scoped under `outputs/<mode>/runtime/`.
+4. Index ordering is derived from filename timestamps, not commit time.
+5. Publish flow stages changes with `git add -A`.
+6. Publish flow executes pytest gate before push when staged changes exist.
+7. Publish flow commits and pushes to `origin/main` when changes exist.
+8. HEAD parity is enforced at end of publish flow.
+9. Capital system must not depend on research system.
 
 ## Guardrails
-- Safe to modify: `scientist-workspace/`, `reports/`.
-- Protected: `.git/`, `archive/`.
+### Modifiable paths
+- `control/`
+- `systems/`
+- `agents/node/`
+- `agents/scientist/`
+- `contracts/`
+- `inputs/`
 
-## Current known strategies
-- `beta_engine_60_40` (alias: `beta-engine-60-40`).
+### Protected paths
+- `.git/`
+- `outputs/` (artifact plane; do not mutate manually unless explicitly requested)
 
-## Safe extension procedure
-1. Add strategy mapping/validation in `publish.py`.
-2. Keep outputs deterministic and self-contained HTML.
-3. Preserve index rule: filename timestamp is publish truth.
-4. Avoid changing engine core unless explicitly required.
-5. Validate local run before commit/push.
+## Existence assertions (repository state)
+- `scientist-workspace/` does not exist in this repository.
+- `reports/` at repository root does not exist in this repository.
 
+## Deterministic operating posture
+- Derive architecture from current repository state and live execution code.
+- Do not assume legacy v1 topology.
+- Keep control-plane statements aligned with runtime entrypoints and artifact paths.
 
 --- system_config.yaml ---
-architecture_version: "1.0"
+architecture_version: "2.1"
+canonical_source: "control/SYSTEM.md"
+
 publication:
-  reports_dir: "reports/"
+  mode_scoped: true
+  roots:
+    capital:
+      runs_dir: "outputs/capital/runs/"
+      archive_dir: "outputs/capital/archive/"
+      runtime_dir: "outputs/capital/runtime/"
+      public_url_root: "https://bavvvy.github.io/agent-lab/outputs/capital/runs/"
+    research:
+      runs_dir: "outputs/research/runs/"
+      archive_dir: "outputs/research/archive/"
+      runtime_dir: "outputs/research/runtime/"
+      public_url_root: "https://bavvvy.github.io/agent-lab/outputs/research/runs/"
   filename_format: "YYYY-MM-DD_HH-MM_<strategy>.html"
   index_source: "filename_timestamp"
   overwrite_allowed: false
-  public_url_root: "https://bavvvy.github.io/agent-lab/reports/"
+
 workflow:
-  publish_script: "scientist-workspace/publish.py"
+  publish_script: "agents/scientist/publish.py"
   index_regenerated_within_publish: true
+  mode_default: "capital"
+
 guardrails:
   modifiable_paths:
-    - "reports/"
-    - "scientist-workspace/"
+    - "control/"
+    - "systems/"
+    - "agents/node/"
+    - "agents/scientist/"
+    - "contracts/"
+    - "inputs/"
   protected_paths:
-    - "archive/"
     - ".git/"
+    - "outputs/"
