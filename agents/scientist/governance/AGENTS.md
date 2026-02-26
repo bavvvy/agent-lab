@@ -27,7 +27,9 @@ This file is subordinate to control/*. In case of conflict, control/ prevails.
   - Includes files and directories.
   - Excludes `.git`, `.venv`, `__pycache__`, `outputs/capital/runs`, `outputs/research/runs`, and large archive paths (`outputs/*/archive`) as needed.
   - Excludes runtime-generated datasets (including `agents/scientist/output` and generated `csv/parquet` datasets under `outputs/`).
-  - Writes to `control/infra_exports/repo_tree_YYYYMMDD.txt` (or `_NN` suffix on same date to avoid overwrite).
+  - Writes active export to `control/infra_exports/repo_tree_YYYYMMDD.txt`.
+  - Before writing, any existing active `repo_tree_*.txt` file is moved into `control/infra_exports/Archive/`.
+  - Archive filename format: `YYYY-MM-DD_HH-MM_<original_name>` (with deterministic numeric suffix only on collision).
   - Prints full saved path + first 40 lines.
   - Does not modify `SYSTEM.md`, bootstrap, or agents; does not run npm; does not auto-commit.
 
