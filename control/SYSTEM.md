@@ -1,28 +1,36 @@
 # SYSTEM.md
 
 ## Architecture version
-- 2.1
+- 2.2
 
 ## Purpose
 Agent Lab is a deterministic multi-agent portfolio research and publication system with a constitutional control-plane, system-mode orchestration layer, and execution agents.
 
 ## Layered architecture (canonical)
 1. `control/` — constitutional layer (authority, invariants, governance)
-2. `systems/` — system mode layer (`capital` vs `research` orchestration/config + portfolio definitions)
+2. `systems/` — system mode layer (`capital` vs `research` orchestration/config)
 3. `agents/` — execution layer (runtime code paths, wrappers, and workflows)
-4. `inputs/` — shared data layer
-5. `outputs/` — mode-scoped artifact layer
+4. `contracts/` — structured request/brief exchange layer between intake and execution
+5. `inputs/` — human-editable input definitions (taxonomy + portfolio CSV templates)
+6. `data/` — canonical market data layer (read/write by ingestion + read by execution)
+7. `outputs/` — mode-scoped artifact layer
 
 Higher layer prevails on conflict.
 
 ## Canonical topology
 - `control/` — control-plane documentation, invariants, and configuration context.
 - `systems/` — mode-scoped orchestration/config:
-  - `systems/capital/`
-  - `systems/research/`
+  - `systems/capital/config.yaml`
+  - `systems/research/config.yaml`
 - `agents/node/` — intake/packaging agent and schema validation.
-- `agents/scientist/` — scientist execution pipeline (engine, enforcement, templates, governance).
-- `inputs/` — shared inputs (hierarchy/mapping/portfolio definition source datasets).
+- `agents/scientist/` — scientist execution pipeline (cli, engine, enforcement, templates, governance, portfolio_engine).
+- `inputs/` — human-editable input definitions:
+  - `inputs/taxonomy/`
+  - `inputs/portfolios/`
+  - legacy `inputs/portfolio_definitions.csv` (still consumed by beta strategy internals)
+- `data/` — canonical market data:
+  - `data/market/prices_master.parquet`
+  - `data/market/prices_master_meta.json`
 - `outputs/` — mode-scoped runtime/publication artifacts.
 - `contracts/` — generated machine contracts and human briefs.
 
@@ -30,11 +38,14 @@ Higher layer prevails on conflict.
 - Capital system must not depend on research system.
 - Research system must not mutate or redefine capital doctrine.
 - Outputs are scoped by mode under `outputs/<mode>/...`.
-- Agents do not own portfolio doctrine; doctrine is system-scoped under `systems/` and constitutionally constrained by `control/`.
+- Agents do not own portfolio doctrine; doctrine is input-scoped under `inputs/portfolios/` and constitutionally constrained by `control/`.
 
 ## Control-plane / execution separation
 - Constitutional definitions live under `control/`.
-- System-mode orchestration inputs live under `systems/`.
+- System-mode runtime configuration lives under `systems/`.
+- Structured machine requests and human briefs live under `contracts/`.
+- Human-editable portfolio/taxonomy inputs live under `inputs/`.
+- Canonical market datasets live under `data/`.
 - Execution code lives under `agents/`.
 - Publication/runtime artifacts live under `outputs/`.
 
@@ -92,9 +103,9 @@ The index must derive entries exclusively from timestamped filenames.
 If non-timestamped files are detected, this constitutes architectural drift and must be corrected.
 
 ## Immutable Root Policy
-Repository root is immutable except for explicitly allowed files.
+Repository root is immutable.
 
-- Allowed root file: `BOOTSTRAP_EXPORT.txt`
+- Bootstrap export artifact must exist ONLY at `control/BOOTSTRAP_EXPORT.txt`
 - Identity artifacts must exist ONLY in `control/`
 - Runtime layers may not write to repository root
 
@@ -135,7 +146,7 @@ Scope (Allowed):
   - `contracts/briefs/`
 - Node must output `capital_input` objects conforming to `contracts/schema/capital_input_schema.json`.
 - Node must not contain allocation logic.
-- Cash / beta / alpha doctrine is execution-derived from system definitions and control constraints.
+- Cash / beta / alpha doctrine is execution-derived from input definitions (`inputs/portfolios/`) and control constraints.
 
 Explicitly Forbidden:
 - Modifying `control/`
@@ -164,6 +175,7 @@ Node operates in Passive Mode:
 - `agents/scientist/`
 - `contracts/`
 - `inputs/`
+- `data/`
 
 ### Protected / caution
 - `.git/`
@@ -175,8 +187,11 @@ Default write targets are restricted to:
 - `systems/`
 - `agents/node/`
 - `agents/scientist/`
+- `inputs/`
+- `data/`
+- `contracts/`
 
-Repository-root writes are prohibited unless explicitly triggered by a defined control command.
+Repository-root writes are prohibited.
 
 ### Node Write Guardrail
 Node write permissions are restricted to:
@@ -201,13 +216,13 @@ Any attempt to write elsewhere constitutes architectural violation.
 ## Control Commands
 ### generate bootstrap
 When the phrase `generate bootstrap` is received, the system must:
-1. Overwrite `./BOOTSTRAP_EXPORT.txt` at repository root.
+1. Overwrite `control/BOOTSTRAP_EXPORT.txt`.
 2. Insert full unmodified contents of:
    - `control/SYSTEM.md`
    - `control/CONTEXT_BOOTSTRAP.md`
    - `control/system_config.yaml`
 3. Preserve formatting exactly.
-4. Confirm only `BOOTSTRAP_EXPORT.txt` changed.
+4. Confirm only `control/BOOTSTRAP_EXPORT.txt` changed.
 5. Commit with message:
    - `Regenerate portable control-plane bootstrap export`
 6. Push to `origin main`.
@@ -219,7 +234,7 @@ When the phrase `refresh constitution` is received, the system must:
 2. Derive architecture strictly from current repository state.
 3. Update `control/SYSTEM.md` to reflect current layered architecture and invariants.
 4. Reconcile outdated references.
-5. Regenerate `./BOOTSTRAP_EXPORT.txt` at repository root.
+5. Regenerate `control/BOOTSTRAP_EXPORT.txt`.
 6. Do NOT run npm.
 7. Do NOT upgrade OpenClaw.
 8. Do NOT modify runtime.
@@ -233,7 +248,7 @@ When the phrase `refresh constitution` is received, the system must:
 
 ### regenerate bootstrap export
 When the phrase `regenerate bootstrap export` is received, the system must:
-1. Generate `./BOOTSTRAP_EXPORT.txt` at repository root.
+1. Generate `control/BOOTSTRAP_EXPORT.txt`.
 2. Use current `control/SYSTEM.md` and current repository structure references.
 3. Do NOT modify `control/SYSTEM.md`.
 4. Do NOT modify OpenClaw runtime.
@@ -242,7 +257,8 @@ When the phrase `regenerate bootstrap export` is received, the system must:
 When the phrase `refresh constitution and bootstrap` is received, the system must:
 1. Run `refresh constitution`.
 2. Then run `regenerate bootstrap export`.
-3. Do NOT perform runtime updates.
+3. Ensure the only bootstrap artifact written is `control/BOOTSTRAP_EXPORT.txt`.
+4. Do NOT perform runtime updates.
 
 ### audit usage <path_or_name>
 When the phrase `audit usage <path_or_name>` is received, the system must run a read-only structural reference audit.
