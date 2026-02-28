@@ -1,3 +1,26 @@
+--- ARCHITECTURE SUMMARY ---
+## Layer one-line definitions
+- control: Governance and constitutional structural policy.
+- contracts: Structured boundary payloads between intake and execution.
+- orchestration: Workflow coordination/sequencing glue only.
+- agents: Interface/execution actors that consume contracts.
+- systems: Bounded domain containers for financial execution.
+- data: Canonical persisted datasets used by execution.
+- inputs: Human-authored definitions and parameter sources.
+- outputs: Generated runtime artefacts only.
+- scripts: Utility and maintenance tooling.
+
+## System definition
+A System is a bounded financial domain container with its own engine, configuration surface, and runtime behaviour.
+
+## Structural invariants
+- Financial logic may exist only in `systems/<name>/engine/`.
+- `orchestration/` may not compute financial metrics or allocation logic.
+- `contracts/` may not contain executable business logic.
+- `scripts/` may not contain financial models.
+- `outputs/` are runtime artefacts and may not be imported as logic.
+- `agents/` may not create new top-level folders without governance update.
+
 --- SYSTEM.md ---
 # SYSTEM.md
 
@@ -59,7 +82,7 @@ For each mode (`capital`, `research`):
 Legacy shared output paths may exist historically under `outputs/capital/legacy/` and are retained as archived artifacts.
 
 ## Publication entrypoint
-- `agents/scientist/publish.py` is the publication entrypoint wrapper.
+- `agents/scientist/cli/publish.py` is the publication entrypoint wrapper.
 - Engine implementation lives at `agents/scientist/engine/publish.py`.
 
 ## Deterministic execution model
@@ -218,16 +241,21 @@ Any attempt to write elsewhere constitutes architectural violation.
 ### generate bootstrap
 When the phrase `generate bootstrap` is received, the system must:
 1. Overwrite `control/BOOTSTRAP_EXPORT.txt`.
-2. Insert full unmodified contents of:
+2. Prepend a distilled `ARCHITECTURE SUMMARY` section containing:
+   - one-line layer definitions (`control`, `contracts`, `orchestration`, `agents`, `systems`, `data`, `inputs`, `outputs`, `scripts`)
+   - formal System definition
+   - structural invariants list
+3. Insert full unmodified contents of:
    - `control/SYSTEM.md`
    - `control/CONTEXT_BOOTSTRAP.md`
    - `control/system_config.yaml`
-3. Preserve formatting exactly.
-4. Confirm only `control/BOOTSTRAP_EXPORT.txt` changed.
-5. Commit with message:
+4. Do NOT dump full `control/ARCHITECTURE.md` into bootstrap export.
+5. Preserve formatting exactly.
+6. Confirm only `control/BOOTSTRAP_EXPORT.txt` changed.
+7. Commit with message:
    - `Regenerate portable control-plane bootstrap export`
-6. Push to `origin main`.
-7. Confirm HEAD parity `TRUE`.
+8. Push to `origin main`.
+9. Confirm HEAD parity `TRUE`.
 
 ### refresh constitution
 When the phrase `refresh constitution` is received, the system must:
@@ -290,6 +318,7 @@ Constraints:
 - No deletions.
 - No auto-commits.
 - No bootstrap regeneration.
+
 
 --- CONTEXT_BOOTSTRAP.md ---
 # CONTEXT_BOOTSTRAP.md
@@ -372,6 +401,7 @@ Agent Lab uses a layered architecture with explicit constitutional, system-mode,
 - Do not assume legacy v1 topology.
 - Keep control-plane statements aligned with runtime entrypoints and artifact paths.
 
+
 --- system_config.yaml ---
 architecture_version: "2.1"
 canonical_source: "control/SYSTEM.md"
@@ -409,3 +439,5 @@ guardrails:
   protected_paths:
     - ".git/"
     - "outputs/"
+
+

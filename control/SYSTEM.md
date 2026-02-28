@@ -58,7 +58,7 @@ For each mode (`capital`, `research`):
 Legacy shared output paths may exist historically under `outputs/capital/legacy/` and are retained as archived artifacts.
 
 ## Publication entrypoint
-- `agents/scientist/publish.py` is the publication entrypoint wrapper.
+- `agents/scientist/cli/publish.py` is the publication entrypoint wrapper.
 - Engine implementation lives at `agents/scientist/engine/publish.py`.
 
 ## Deterministic execution model
@@ -217,16 +217,21 @@ Any attempt to write elsewhere constitutes architectural violation.
 ### generate bootstrap
 When the phrase `generate bootstrap` is received, the system must:
 1. Overwrite `control/BOOTSTRAP_EXPORT.txt`.
-2. Insert full unmodified contents of:
+2. Prepend a distilled `ARCHITECTURE SUMMARY` section containing:
+   - one-line layer definitions (`control`, `contracts`, `orchestration`, `agents`, `systems`, `data`, `inputs`, `outputs`, `scripts`)
+   - formal System definition
+   - structural invariants list
+3. Insert full unmodified contents of:
    - `control/SYSTEM.md`
    - `control/CONTEXT_BOOTSTRAP.md`
    - `control/system_config.yaml`
-3. Preserve formatting exactly.
-4. Confirm only `control/BOOTSTRAP_EXPORT.txt` changed.
-5. Commit with message:
+4. Do NOT dump full `control/ARCHITECTURE.md` into bootstrap export.
+5. Preserve formatting exactly.
+6. Confirm only `control/BOOTSTRAP_EXPORT.txt` changed.
+7. Commit with message:
    - `Regenerate portable control-plane bootstrap export`
-6. Push to `origin main`.
-7. Confirm HEAD parity `TRUE`.
+8. Push to `origin main`.
+9. Confirm HEAD parity `TRUE`.
 
 ### refresh constitution
 When the phrase `refresh constitution` is received, the system must:
