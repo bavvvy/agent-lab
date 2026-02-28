@@ -129,7 +129,7 @@ If non-timestamped files are detected, this constitutes architectural drift and 
 ## Immutable Root Policy
 Repository root is immutable.
 
-- Bootstrap export artifact must exist ONLY at `control/BOOTSTRAP_EXPORT.txt`
+- Bootstrap export artifact must exist ONLY at `control/bootstrap/BOOTSTRAP_EXPORT.txt`
 - Identity artifacts must exist ONLY in `control/`
 - Runtime layers may not write to repository root
 
@@ -240,18 +240,18 @@ Any attempt to write elsewhere constitutes architectural violation.
 ## Control Commands
 ### generate bootstrap
 When the phrase `generate bootstrap` is received, the system must:
-1. Overwrite `control/BOOTSTRAP_EXPORT.txt`.
+1. Overwrite `control/bootstrap/BOOTSTRAP_EXPORT.txt`.
 2. Prepend a distilled `ARCHITECTURE SUMMARY` section containing:
    - one-line layer definitions (`control`, `contracts`, `orchestration`, `agents`, `systems`, `data`, `inputs`, `outputs`, `scripts`)
    - formal System definition
    - structural invariants list
 3. Insert full unmodified contents of:
-   - `control/SYSTEM.md`
-   - `control/CONTEXT_BOOTSTRAP.md`
-   - `control/system_config.yaml`
-4. Do NOT dump full `control/ARCHITECTURE.md` into bootstrap export.
+   - `control/constitution/SYSTEM.md`
+   - `control/bootstrap/CONTEXT_BOOTSTRAP.md`
+   - `control/bootstrap/system_config.yaml`
+4. Do NOT dump full `control/constitution/ARCHITECTURE.md` into bootstrap export.
 5. Preserve formatting exactly.
-6. Confirm only `control/BOOTSTRAP_EXPORT.txt` changed.
+6. Confirm only `control/bootstrap/BOOTSTRAP_EXPORT.txt` changed.
 7. Commit with message:
    - `Regenerate portable control-plane bootstrap export`
 8. Push to `origin main`.
@@ -261,9 +261,9 @@ When the phrase `generate bootstrap` is received, the system must:
 When the phrase `refresh constitution` is received, the system must:
 1. Inspect live repository state at repo root.
 2. Derive architecture strictly from current repository state.
-3. Update `control/SYSTEM.md` to reflect current layered architecture and invariants.
+3. Update `control/constitution/SYSTEM.md` to reflect current layered architecture and invariants.
 4. Reconcile outdated references.
-5. Regenerate `control/BOOTSTRAP_EXPORT.txt`.
+5. Regenerate `control/bootstrap/BOOTSTRAP_EXPORT.txt`.
 6. Do NOT run npm.
 7. Do NOT upgrade OpenClaw.
 8. Do NOT modify runtime.
@@ -277,16 +277,16 @@ When the phrase `refresh constitution` is received, the system must:
 
 ### regenerate bootstrap export
 When the phrase `regenerate bootstrap export` is received, the system must:
-1. Generate `control/BOOTSTRAP_EXPORT.txt`.
-2. Use current `control/SYSTEM.md` and current repository structure references.
-3. Do NOT modify `control/SYSTEM.md`.
+1. Generate `control/bootstrap/BOOTSTRAP_EXPORT.txt`.
+2. Use current `control/constitution/SYSTEM.md` and current repository structure references.
+3. Do NOT modify `control/constitution/SYSTEM.md`.
 4. Do NOT modify OpenClaw runtime.
 
 ### refresh constitution and bootstrap
 When the phrase `refresh constitution and bootstrap` is received, the system must:
 1. Run `refresh constitution`.
 2. Then run `regenerate bootstrap export`.
-3. Ensure the only bootstrap artifact written is `control/BOOTSTRAP_EXPORT.txt`.
+3. Ensure the only bootstrap artifact written is `control/bootstrap/BOOTSTRAP_EXPORT.txt`.
 4. Do NOT perform runtime updates.
 
 ### audit usage <path_or_name>
@@ -404,7 +404,7 @@ Agent Lab uses a layered architecture with explicit constitutional, system-mode,
 
 --- system_config.yaml ---
 architecture_version: "2.1"
-canonical_source: "control/SYSTEM.md"
+canonical_source: "control/constitution/SYSTEM.md"
 
 publication:
   mode_scoped: true
